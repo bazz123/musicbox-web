@@ -25,6 +25,8 @@ fn pentatonic_frequencies() -> Vec<f32> {
 /// A layer of oscillators in a frequency range, with optional effects.
 pub struct Layer {
     pub oscillators: Vec<Oscillator>,
+    base_rates: Vec<f32>,
+    base_amps: Vec<f32>,
     pub filter: Option<ResonantLpf>,
     pub reverb: Option<DattorroReverb>,
 }
@@ -35,7 +37,31 @@ impl Layer {
             .iter()
             .map(|&f| Oscillator::new(f, amplitude, sparsity, sample_rate, rng))
             .collect();
-        Self { oscillators, filter: None, reverb: None }
+        let oscillators: Vec<Oscillator> = oscillators;
+        let base_rates = oscillators.iter().map(|o: &Oscillator| o.envelope_rate).collect();
+        let base_amps = oscillators.iter().map(|o: &Oscillator| o.amplitude).collect();
+        Self { oscillators, base_rates, base_amps, filter: None, reverb: None }
+    }
+
+    // Detail controls (musicbox-web). Each leaves the layer as constructed at its default.
+
+    /// Share of each swell cycle that is silent: 0 = always sounding.
+    pub fn set_sparsity(&mut self, sparsity: f32) {
+        for o in &mut self.oscillators { o.sparsity = sparsity; }
+    }
+    /// Multiplier on how fast notes swell in and out (1 = original).
+    pub fn set_breath(&mut self, mul: f32) {
+        for (o, &r) in self.oscillators.iter_mut().zip(&self.base_rates) { o.envelope_rate = r * mul; }
+    }
+    /// Multiplier on pitch drift depth (1 = original, 0 = none).
+    pub fn set_drift(&mut self, mul: f32) {
+        for o in &mut self.oscillators { o.drift_amount = o.freq * 0.003 * mul; }
+    }
+    /// Silence or restore oscillators below `below_hz`.
+    pub fn set_sub(&mut self, on: bool, below_hz: f32) {
+        for (o, &a) in self.oscillators.iter_mut().zip(&self.base_amps) {
+            o.amplitude = if !on && o.freq < below_hz { 0.0 } else { a };
+        }
     }
 
     pub fn with_filter(mut self, filter: ResonantLpf) -> Self {
@@ -68,6 +94,16 @@ pub struct Drone {
     mid: Layer,
     high: Layer,
     plucks: PluckEngine,
+    // Mixer and detail state (musicbox-web). Order: bass, mid, pluck, high.
+    gain_target: [f32; 4],
+    gain: [f32; 4],
+    gain_coef: f32,
+    levels: [f32; 4],
+    level_decay: f32,
+    warmth_drive: f32,
+    warmth_norm: f32,
+    limiter_on: bool,
+    sr: f32,
     limiter_gain: f32,
     fade_pos: u32,
     fade_state: State,
@@ -114,13 +150,24 @@ impl Drone {
         let mid = Layer::new(&mid_freqs, 0.08 * k, 0.5, sr, &mut rng).with_filter(mid_filter);
         let high_reverb = DattorroReverb::new(0.85, 0.4, 0.7, 0.04, sr, &mut rng);
         let high = Layer::new(&high_freqs, 0.04 * k, 0.3, sr, &mut rng).with_reverb(high_reverb);
-        let plucks = PluckEngine::new(pluck_freqs, 0.3, sr, &mut rng);
+        let mut plucks = PluckEngine::new(pluck_freqs, 0.3, sr, &mut rng);
+        plucks.bbd_left.reserve_ms(1400.0);
+        plucks.bbd_right.reserve_ms(1400.0);
 
         Self {
             bass,
             mid,
             high,
             plucks,
+            gain_target: [1.0; 4],
+            gain: [1.0; 4],
+            gain_coef: 1.0 - (-1.0 / (0.02 * sr)).exp(),
+            levels: [0.0; 4],
+            level_decay: (-1.0 / (0.3 * sr)).exp(),
+            warmth_drive: 1.0,
+            warmth_norm: 1.0,
+            limiter_on: true,
+            sr,
             limiter_gain: 1.0,
             fade_pos: 0,
             fade_state: State::FadingIn,
@@ -157,17 +204,37 @@ impl Drone {
             return (0.0, 0.0);
         }
 
-        let (bass_l, bass_r) = self.bass.next_sample();
-        let (mid_l, mid_r) = self.mid.next_sample();
-        let (high_l, high_r) = self.high.next_sample();
-        let (pluck_l, pluck_r) = self.plucks.next_sample();
+        let (mut bass_l, mut bass_r) = self.bass.next_sample();
+        let (mut mid_l, mut mid_r) = self.mid.next_sample();
+        let (mut high_l, mut high_r) = self.high.next_sample();
+        let (mut pluck_l, mut pluck_r) = self.plucks.next_sample();
+
+        if self.warmth_drive > 1.0 {
+            bass_l = (bass_l * self.warmth_drive).tanh() / self.warmth_norm;
+            bass_r = (bass_r * self.warmth_drive).tanh() / self.warmth_norm;
+        }
+        // Layer gains, smoothed over ~20 ms. At unity they leave samples untouched.
+        for i in 0..4 {
+            self.gain[i] += (self.gain_target[i] - self.gain[i]) * self.gain_coef;
+        }
+        let g = self.gain;
+        bass_l *= g[0]; bass_r *= g[0];
+        mid_l *= g[1]; mid_r *= g[1];
+        pluck_l *= g[2]; pluck_r *= g[2];
+        high_l *= g[3]; high_r *= g[3];
+        for (i, (l, r)) in [(bass_l, bass_r), (mid_l, mid_r), (pluck_l, pluck_r), (high_l, high_r)].into_iter().enumerate() {
+            let p = l.abs().max(r.abs());
+            self.levels[i] = if p > self.levels[i] { p } else { self.levels[i] * self.level_decay };
+        }
 
         let mut left = (bass_l + mid_l + high_l + pluck_l).tanh();
         let mut right = (bass_r + mid_r + high_r + pluck_r).tanh();
 
         // Peak limiter
         let peak = left.abs().max(right.abs());
-        if peak * self.limiter_gain > 0.8 {
+        if !self.limiter_on {
+            self.limiter_gain = 1.0;
+        } else if peak * self.limiter_gain > 0.8 {
             let target = 0.8 / peak;
             self.limiter_gain += 0.002 * (target - self.limiter_gain);
         } else {
@@ -178,6 +245,86 @@ impl Drone {
         right *= self.limiter_gain * master_gain;
 
         (left, right)
+    }
+}
+
+impl Drone {
+    /// Peak level per layer (bass, mid, pluck, high), after layer gain.
+    pub fn levels(&self) -> &[f32; 4] {
+        &self.levels
+    }
+
+    /// Live controls (musicbox-web). Unknown names are ignored.
+    pub fn set_param(&mut self, name: &str, v: f32) {
+        match name {
+            "bass_gain" => self.gain_target[0] = v.clamp(0.0, 4.0),
+            "mid_gain" => self.gain_target[1] = v.clamp(0.0, 4.0),
+            "pluck_gain" => self.gain_target[2] = v.clamp(0.0, 4.0),
+            "high_gain" => self.gain_target[3] = v.clamp(0.0, 4.0),
+            "freeze" => if let Some(r) = &mut self.high.reverb { r.freeze = if v >= 0.5 { 1.0 } else { 0.0 } },
+            "bass_sub" => self.bass.set_sub(v >= 0.5, 70.0),
+            "bass_warmth" => {
+                let w = v.clamp(0.0, 1.0);
+                self.warmth_drive = 1.0 + 6.0 * w;
+                self.warmth_norm = self.warmth_drive.powf(0.75);
+            }
+            "mid_cut_lo" => if let Some(f) = &mut self.mid.filter { f.cutoff_min = v.clamp(40.0, 4000.0) },
+            "mid_cut_hi" => if let Some(f) = &mut self.mid.filter { f.cutoff_max = v.clamp(80.0, 8000.0) },
+            "mid_res" => if let Some(f) = &mut self.mid.filter { f.resonance = v.clamp(0.0, 0.9) },
+            "mid_sweep" => if let Some(f) = &mut self.mid.filter { f.cutoff_lfo_rate = v.clamp(0.005, 2.0) },
+            "high_decay" => if let Some(r) = &mut self.high.reverb { r.reverb_time = v.clamp(0.3, 0.97) },
+            "high_damp" => if let Some(r) = &mut self.high.reverb { r.lp = v.clamp(0.2, 1.0) },
+            "high_mix" => if let Some(r) = &mut self.high.reverb {
+                r.amount_min = (0.4 * v).clamp(0.0, 1.0);
+                r.amount_max = (0.7 * v).clamp(0.0, 1.0);
+            },
+            "pluck_rate" => {
+                let r = v.clamp(0.1, 8.0);
+                let p = &mut self.plucks;
+                p.min_interval = ((self.sr / r) as u32).max(1);
+                p.max_interval = ((4.0 * self.sr / r) as u32).max(p.min_interval + 1);
+                p.next_pluck_in = p.next_pluck_in.min(p.max_interval);
+            }
+            "pluck_bright" => for voice in &mut self.plucks.voices { voice.damp = v.clamp(0.1, 0.99) },
+            "pluck_decay" => for voice in &mut self.plucks.voices { voice.feedback = v.clamp(0.9, 0.9995) },
+            "bbd_time" => {
+                let ms = v.clamp(40.0, 1200.0);
+                self.plucks.bbd_left.delay_samples = ms * self.sr / 1000.0;
+                self.plucks.bbd_right.delay_samples = ms * (370.0 / 340.0) * self.sr / 1000.0;
+            }
+            "bbd_feedback" => { let f = v.clamp(0.0, 0.92); self.plucks.bbd_left.feedback = f; self.plucks.bbd_right.feedback = f; }
+            "bbd_mix" => { let m = v.clamp(0.0, 1.0); self.plucks.bbd_left.mix = m; self.plucks.bbd_right.mix = m; }
+            "bbd_wow" => {
+                let m = v.clamp(0.0, 4.0);
+                self.plucks.bbd_left.wobble_depth = 1.5 * m * self.sr / 1000.0;
+                self.plucks.bbd_right.wobble_depth = 1.8 * m * self.sr / 1000.0;
+            }
+            "fade_time" => {
+                let new = (v.clamp(0.5, 120.0) * self.sr) as u32;
+                self.fade_pos = ((self.fade_pos as u64 * new as u64) / self.fade_samples.max(1) as u64) as u32;
+                self.fade_samples = new.max(1);
+            }
+            "engine_limiter" => self.limiter_on = v >= 0.5,
+            _ => {
+                // "<layer>_sparsity" | "<layer>_breath" | "<layer>_drift" for bass, mid, high
+                if let Some((pre, what)) = name.split_once('_') {
+                    let l = match pre {
+                        "bass" => &mut self.bass,
+                        "mid" => &mut self.mid,
+                        "high" => &mut self.high,
+                        _ => return,
+                    };
+                    {
+                        match what {
+                            "sparsity" => l.set_sparsity(v.clamp(0.0, 0.95)),
+                            "breath" => l.set_breath(v.clamp(0.1, 8.0)),
+                            "drift" => l.set_drift(v.clamp(0.0, 6.0)),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -199,5 +346,59 @@ impl Track for Drone {
 
     fn state(&self) -> State {
         self.fade_state
+    }
+}
+
+#[cfg(test)]
+mod mixer_tests {
+    use super::*;
+    use crate::effects::DattorroReverb;
+    use rand::SeedableRng;
+
+    fn tail_energy(freeze: bool) -> f32 {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+        let mut rv = DattorroReverb::new(0.85, 1.0, 1.0, 0.0, 48000.0, &mut rng);
+        let mut x: u32 = 1;
+        for _ in 0..48000 {
+            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+            rv.process((x >> 8) as f32 / 16777216.0 - 0.5);
+        }
+        rv.freeze = if freeze { 1.0 } else { 0.0 };
+        for _ in 0..48000 * 8 { rv.process(0.0); }
+        (0..48000).map(|_| { let (l, r) = rv.process(0.0); l * l + r * r }).sum()
+    }
+
+    #[test]
+    fn freeze_holds_the_tail() {
+        let frozen = tail_energy(true);
+        let free = tail_energy(false);
+        assert!(frozen > 1.0, "frozen tail should still be loud after 8 s, got {frozen}");
+        assert!(free < frozen * 1e-3, "unfrozen tail should have decayed ({free} vs {frozen})");
+    }
+
+    #[test]
+    fn zero_gains_silence_the_drone() {
+        let mut d = Drone::new(48000, 9);
+        for n in ["bass_gain", "mid_gain", "pluck_gain", "high_gain"] { d.set_param(n, 0.0); }
+        let (mut l, mut r) = (vec![0.0; 48000], vec![0.0; 48000]);
+        d.render(&mut l, &mut r); // smoothing settles well within this second
+        d.render(&mut l, &mut r);
+        assert!(l.iter().chain(&r).all(|s| s.abs() < 1e-6));
+        assert!(d.levels().iter().all(|&v| v < 1e-3));
+    }
+
+    #[test]
+    fn detail_params_stay_finite() {
+        let mut d = Drone::new(48000, 5);
+        for (n, v) in [("mid_res", 5.0), ("mid_cut_hi", 1e9), ("high_decay", 2.0), ("high_damp", 1.0),
+                       ("bbd_time", 99999.0), ("bbd_feedback", 3.0), ("bbd_wow", 9.0), ("pluck_rate", 100.0),
+                       ("bass_warmth", 1.0), ("bass_sparsity", 0.0), ("mid_breath", 8.0), ("fade_time", 0.0)] {
+            d.set_param(n, v);
+        }
+        let (mut l, mut r) = (vec![0.0; 4096], vec![0.0; 4096]);
+        for _ in 0..200 {
+            d.render(&mut l, &mut r);
+            assert!(l.iter().chain(&r).all(|s| s.is_finite() && s.abs() <= 1.0));
+        }
     }
 }

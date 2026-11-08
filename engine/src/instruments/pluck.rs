@@ -8,6 +8,8 @@ pub struct PluckVoice {
     pub period: usize,
     pub lp_state: f32,
     pub feedback: f32,
+    /// Loop low-pass coefficient: lower is darker. Was a fixed 0.7 upstream.
+    pub damp: f32,
     pub active: bool,
 }
 
@@ -18,6 +20,7 @@ impl PluckVoice {
             period: max_delay,
             lp_state: 0.0,
             feedback: 0.996,
+            damp: 0.7,
             active: false,
         }
     }
@@ -31,7 +34,7 @@ impl PluckVoice {
         let prev = self.delay.read_at(self.period - 1);
         let averaged = (out + prev) * 0.5;
 
-        self.lp_state += 0.7 * (averaged - self.lp_state);
+        self.lp_state += self.damp * (averaged - self.lp_state);
         let fed_back = self.lp_state * self.feedback;
 
         self.delay.write_and_advance(fed_back);

@@ -19,6 +19,11 @@ With the default key and tuning the output is sample-for-sample identical to ups
   Dorian, Phrygian, In-sen or Hirajoshi scales; A4 = 432, 440 or 442 Hz; equal
   temperament or just intonation (5-limit with a 9/5 minor seventh, or 7-limit with
   the 7/4 harmonic seventh, matching the techno track's 9/5 and 7/4 pulse ratios)
+- **Drone mixer** ("What you'll hear"): level, meter, mute and solo per layer; **Freeze**
+  on the highs' plate reverb; **Density**, **Brightness** and **Space** macro knobs; and a
+  details drawer per layer (breath, drift, warmth, sub octave, filter sweep and resonance,
+  string brightness and ring, BBD delay time, feedback and wow, reverb decay, tone and mix,
+  fade time, engine limiter)
 - **Master section**: low cut, tilt EQ, mono bass, width, drive, loudness target,
   true-peak look-ahead limiter, and EBU R128 meters
 - A live scope and peak meter
@@ -55,6 +60,14 @@ The first commit that adds it is unmodified; the changes after it are:
   pitch table read through the tuning.
 - `instruments/pads.rs`: `trigger_triad`, so pad chords can follow the scale.
 - `lib.rs`: `MusicBox::with_tuning`.
+- `tracks/drone.rs`: per-layer gains (smoothed), layer peak meters, `set_param` for the
+  mixer and detail controls, optional bass saturation, switchable engine limiter.
+- `effects/reverb.rs`: freeze, a 50 ms crossfade to a closed, undamped tank.
+- `instruments/pluck.rs`: string damping as a field (was a fixed 0.7).
+- `effects/delay.rs`: `BbdDelay::reserve_ms` for longer delay times.
+
+Every change leaves the defaults alone: with nothing touched, the output is identical to
+upstream sample for sample.
 
 ## Credits and license
 

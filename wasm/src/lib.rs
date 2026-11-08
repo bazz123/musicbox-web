@@ -1,11 +1,12 @@
-use musicbox_core::{MusicBox, Track};
+use musicbox_core::Track;
+use musicbox_core::tracks::drone::Drone;
 use musicbox_core::tracks::ambient_techno::AmbientTechno;
 use musicbox_core::tuning::{scale_by_id, Intonation, Tuning};
 
 fn no_entropy(_: &mut [u8]) -> Result<(), getrandom::Error> { Err(getrandom::Error::UNSUPPORTED) }
 getrandom::register_custom_getrandom!(no_entropy);
 
-enum Engine { Drone(MusicBox), Techno(AmbientTechno) }
+enum Engine { Drone(Drone), Techno(AmbientTechno) }
 
 struct State { engine: Engine, l: Vec<f32>, r: Vec<f32> }
 
@@ -28,7 +29,7 @@ pub extern "C" fn mb_init(kind: u32, sample_rate: u32, seed_hi: u32, seed_lo: u3
     };
     let seed = ((seed_hi as u64) << 32) | seed_lo as u64;
     let engine = if kind == 1 { Engine::Techno(AmbientTechno::with_tuning(sample_rate, seed, tuning)) }
-                 else { Engine::Drone(MusicBox::with_tuning(sample_rate, seed, tuning)) };
+                 else { Engine::Drone(Drone::with_tuning(sample_rate, seed, tuning)) };
     unsafe { STATE = Some(State { engine, l: vec![0.0; 4096], r: vec![0.0; 4096] }); }
 }
 
@@ -63,7 +64,16 @@ pub extern "C" fn mb_name_buf() -> *mut u8 { unsafe { NAME.as_mut_ptr() } }
 #[allow(static_mut_refs)]
 pub extern "C" fn mb_set_param(len: usize, value: f32) {
     let bytes = unsafe { &NAME[..len.min(64)] };
-    if let (Ok(name), Engine::Techno(e)) = (std::str::from_utf8(bytes), &mut st().engine) {
-        e.set_param(name, value);
+    if let Ok(name) = std::str::from_utf8(bytes) {
+        match &mut st().engine {
+            Engine::Techno(e) => e.set_param(name, value),
+            Engine::Drone(e) => e.set_param(name, value),
+        }
     }
+}
+
+/// Drone layer peak levels (bass, mid, pluck, high); null for techno.
+#[unsafe(no_mangle)]
+pub extern "C" fn mb_levels() -> *const f32 {
+    match &st().engine { Engine::Drone(e) => e.levels().as_ptr(), Engine::Techno(_) => std::ptr::null() }
 }

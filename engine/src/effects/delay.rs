@@ -84,6 +84,14 @@ impl BbdDelay {
         }
     }
 
+    /// Grow the buffer so delay plus wobble up to `max_ms` fits. Call before audio starts.
+    pub fn reserve_ms(&mut self, max_ms: f32) {
+        let need = (max_ms * self.sample_rate / 1000.0 + 100.0) as usize;
+        if need > self.buffer.len() {
+            self.buffer = DelayLine::new(need);
+        }
+    }
+
     pub fn process(&mut self, input: f32) -> f32 {
         let wobble = (self.wobble_phase * std::f32::consts::TAU).sin() * self.wobble_depth;
         let current_delay = self.delay_samples + wobble;

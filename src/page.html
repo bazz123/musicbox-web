@@ -80,6 +80,40 @@ button:focus-visible, #seed:focus-visible { outline: 2px solid var(--led); outli
 #auto { font: 500 12px/1 var(--f-body); border: 1px solid var(--rule); background: none; color: var(--ink); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
 #auto[disabled] { opacity: .45; cursor: default; }
 
+/* keep the scope in view while mixing the long controls column */
+@media (min-width: 821px) { .scope { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); } }
+
+/* drone mixer */
+.macros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; padding: 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); }
+@media (max-width: 480px) { .macros { grid-template-columns: minmax(0, 1fr); } }
+.macro { display: grid; gap: 6px; min-width: 0; }
+.macro label { color: var(--ink); }
+.macro input { width: 100%; accent-color: var(--led); margin: 4px 0 0; }
+.layers.mixer li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 0; }
+.lhead { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; transition: opacity .2s; }
+.ldesc { font-size: 14px; }
+.layer.dim .lhead, .layer.dim .lmeter { opacity: .4; }
+.lctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 104px; }
+.lmeter { flex: 0 0 52px; height: 8px; background: var(--bg); border: 1px solid var(--rule); border-radius: 2px; position: relative; overflow: hidden; }
+.lmeter i { position: absolute; inset: 0; background: var(--trace); transform-origin: left; transform: scaleX(0); transition: transform .06s linear; }
+.fader { flex: 1 1 90px; min-width: 70px; accent-color: var(--led); margin: 0; }
+.lctl output { font: 400 11px/1 var(--f-mono); color: var(--muted); width: 50px; font-variant-numeric: tabular-nums; }
+.ms { width: 28px; height: 28px; border: 1px solid var(--rule); background: var(--bg); color: var(--muted); border-radius: 4px; font: 600 12px/1 var(--f-mono); cursor: pointer; }
+.ms.mute[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.ms.solo[aria-pressed="true"] { background: var(--led); border-color: var(--led); color: #fff; }
+.freeze { font: 600 12px/1 var(--f-body); border: 1px solid var(--trace); color: var(--trace); background: none; border-radius: 4px; padding: 8px 10px; cursor: pointer; }
+.freeze[aria-pressed="true"] { background: var(--trace); color: var(--bg); }
+.more { font: 500 12px/1 var(--f-body); background: none; border: 0; padding: 6px 2px; color: var(--muted); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.more[aria-expanded="true"] { color: var(--ink); }
+.ldetail { margin-left: 104px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; padding: 14px; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; }
+.ldetail .ctl input[type=range] { margin-top: 2px; }
+.tog { justify-self: start; min-width: 56px; }
+@media (max-width: 480px) {
+  .lhead { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .lctl { padding-left: 0; }
+  .ldetail { margin-left: 0; grid-template-columns: minmax(0, 1fr); }
+}
+
 /* key and tuning */
 .tune-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
 @media (max-width: 480px) { .tune-row { grid-template-columns: minmax(0, 1fr); } }
@@ -221,14 +255,12 @@ footer a { color: var(--ink); }
       </div>
 
       <div class="group" id="drone-info">
-        <span class="label">What you’ll hear</span>
-        <ul class="layers">
-          <li><b>Bass</b><span>Sine drones fading in and out below 130 Hz</span></li>
-          <li><b>Mids</b><span>Oscillator layers through a sweeping resonant low-pass filter</span></li>
-          <li><b>Plucks</b><span>Karplus-Strong strings through a bucket-brigade (BBD) delay</span></li>
-          <li><b>Highs</b><span>Oscillators into a Dattorro plate reverb, ported from Mutable Instruments Clouds</span></li>
-          <li><b>Master</b><span>Peak limiter and a 3-second fade in and out</span></li>
-        </ul>
+        <div class="mixhead">
+          <span class="label">What you’ll hear</span>
+          <button id="mx-reset" class="ab small">Reset layers</button>
+        </div>
+        <div class="macros" id="macros"></div>
+        <ul class="layers mixer" id="mixer"></ul>
       </div>
 
       <div class="group" id="techno-info" hidden>
@@ -339,7 +371,7 @@ footer a { color: var(--ink); }
 class MB extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.e = null; this.done = false;
+    this.e = null; this.done = false; this.blk = 0;
     this.port.onmessage = ({ data }) => {
       try {
         if (data.type === "init") {
@@ -366,6 +398,11 @@ class MB extends AudioWorkletProcessor {
     const buf = this.e.memory.buffer;
     out[0].set(new Float32Array(buf, this.e.mb_left(), n));
     if (out[1]) out[1].set(new Float32Array(buf, this.e.mb_right(), n));
+    // drone layer meters, ~20 times a second
+    if (++this.blk % 16 === 0) {
+      const lp = this.e.mb_levels();
+      if (lp) this.port.postMessage({ type: "levels", v: Array.from(new Float32Array(buf, lp, 4)) });
+    }
     if (this.e.mb_is_done()) { this.done = true; this.port.postMessage({ type: "done" }); }
     return true;
   }
@@ -697,7 +734,8 @@ async function ensureCtx() {
   pushMaster();
   node.connect(gain).connect(master).connect(analyser).connect(ctx.destination);
   node.port.onmessage = ({ data }) => {
-    if (data.type === "ready") replayManual();
+    if (data.type === "ready") { replayManual(); replayDrone(); }
+    if (data.type === "levels") showLevels(data.v);
     if (data.type === "done" && stopping) { ctx.suspend(); stopping = false; setState(false); }
     if (data.type === "error") showErr("The audio engine failed to start: " + data.message);
   };
@@ -812,6 +850,169 @@ document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click"
   VOICES.forEach(([id]) => vstate[id].on = false); paintVoices();
   if (playing && !stopping) restart();
 }));
+
+// ── drone mixer: layer level, mute, solo, freeze, macros and details
+// Control values are in display units; `eng` converts to the engine's parameter.
+// Only values that differ from the default are sent, so an untouched mixer is the original engine.
+const lerp3 = (m, a, d, b) => m < 50 ? a + (d - a) * m / 50 : d + (b - d) * (m - 50) / 50;
+const pct = v => `${Math.round(v)} %`;
+const times = v => `${v.toFixed(1)}×`;
+const density = (layer, def) => ({ p: `${layer}_sparsity`, label: "Density", min: 0, max: 100, step: 1, def, eng: v => 1 - v / 100, fmt: pct });
+const breath = layer => ({ p: `${layer}_breath`, label: "Breath", min: -2, max: 2, step: 0.1, def: 0, eng: v => 2 ** -v,
+  fmt: v => Math.abs(v) < 0.05 ? "original" : v > 0 ? `${(2 ** v).toFixed(1)}× slower` : `${(2 ** -v).toFixed(1)}× faster` });
+const LAYERS = [
+  { id: "bass", name: "Bass", desc: "Sine drones fading in and out below 130 Hz", details: [
+    density("bass", 30), breath("bass"),
+    { p: "bass_drift", label: "Pitch drift", min: 0, max: 5, step: 0.1, def: 1, eng: v => v, fmt: v => v ? times(v) : "off" },
+    { p: "bass_warmth", label: "Warmth", min: 0, max: 100, step: 1, def: 0, eng: v => v / 100, fmt: v => v ? pct(v) : "clean" },
+    { p: "bass_sub", label: "Sub octave below 70 Hz", type: "toggle", def: 1 },
+  ] },
+  { id: "mid", name: "Mids", desc: "Oscillator layers through a sweeping resonant low-pass filter", details: [
+    density("mid", 50), breath("mid"),
+    { p: "mid_cut_lo", label: "Sweep low", min: 60, max: 1000, step: 10, def: 200, eng: v => v, fmt: v => `${Math.round(v)} Hz` },
+    { p: "mid_cut_hi", label: "Sweep high", min: 300, max: 6000, step: 50, def: 1200, eng: v => v, fmt: v => `${Math.round(v)} Hz` },
+    { p: "mid_res", label: "Resonance", min: 0, max: 90, step: 1, def: 30, eng: v => v / 100, fmt: pct },
+    { p: "mid_sweep", label: "Sweep cycle", min: 2, max: 120, step: 0.1, def: 15.4, eng: v => 1 / v, fmt: v => `${v.toFixed(1)} s` },
+  ] },
+  { id: "pluck", name: "Plucks", desc: "Karplus-Strong strings through a bucket-brigade (BBD) delay", details: [
+    { p: "pluck_rate", label: "Rate", min: -2, max: 2, step: 0.1, def: 0, eng: v => 2 ** v, fmt: v => Math.abs(v) < 0.05 ? "original" : `${(2 ** v).toFixed(2)}×` },
+    { p: "pluck_bright", label: "String brightness", min: 20, max: 95, step: 1, def: 70, eng: v => v / 100, fmt: pct },
+    { p: "pluck_decay", label: "String ring", min: 0, max: 100, step: 1, def: 76, eng: v => 0.985 + 0.0145 * v / 100, fmt: pct },
+    { p: "bbd_time", label: "Delay time", min: 60, max: 1200, step: 10, def: 340, eng: v => v, fmt: v => `${Math.round(v)} ms` },
+    { p: "bbd_feedback", label: "Delay feedback", min: 0, max: 90, step: 1, def: 35, eng: v => v / 100, fmt: pct },
+    { p: "bbd_mix", label: "Delay mix", min: 0, max: 100, step: 1, def: 50, eng: v => v / 100, fmt: pct },
+    { p: "bbd_wow", label: "Wow and flutter", min: 0, max: 4, step: 0.1, def: 1, eng: v => v, fmt: v => v ? times(v) : "off" },
+  ] },
+  { id: "high", name: "Highs", desc: "Oscillators into a Dattorro plate reverb, ported from Mutable Instruments Clouds", freeze: true, details: [
+    density("high", 70), breath("high"),
+    { p: "high_decay", label: "Reverb decay", min: 50, max: 97, step: 1, def: 85, eng: v => v / 100, fmt: pct },
+    { p: "high_damp", label: "Reverb tone", min: 30, max: 100, step: 1, def: 82, eng: v => v / 100, fmt: v => v >= 100 ? "open" : pct(v) },
+    { p: "high_mix", label: "Reverb mix", min: 0, max: 160, step: 5, def: 100, eng: v => v / 100, fmt: pct },
+  ] },
+  { id: "master", name: "Engine", desc: "The engine’s own soft clip, peak limiter and fade", noFader: true, details: [
+    { p: "fade_time", label: "Fade in and out", min: 1, max: 60, step: 1, def: 3, eng: v => v, fmt: v => `${Math.round(v)} s` },
+    { p: "engine_limiter", label: "Engine limiter", type: "toggle", def: 1 },
+  ] },
+];
+const MACROS = [
+  { id: "density", label: "Density", hint: "how many voices sound at once",
+    map: m => ({ bass_sparsity: lerp3(m, 10, 30, 70), mid_sparsity: lerp3(m, 20, 50, 90), high_sparsity: lerp3(m, 40, 70, 100), pluck_rate: lerp3(m, -1.5, 0, 1.5) }) },
+  { id: "bright", label: "Brightness", hint: "filter, string and reverb tone",
+    map: m => ({ mid_cut_lo: lerp3(m, 120, 200, 400), mid_cut_hi: lerp3(m, 500, 1200, 3000), high_damp: lerp3(m, 45, 82, 100), pluck_bright: lerp3(m, 35, 70, 95) }) },
+  { id: "space", label: "Space", hint: "reverb and delay size",
+    map: m => ({ high_decay: lerp3(m, 60, 85, 96), high_mix: lerp3(m, 50, 100, 150), bbd_feedback: lerp3(m, 10, 35, 70), bbd_mix: lerp3(m, 25, 50, 75) }) },
+];
+const FADERS = ["bass", "mid", "pluck", "high"];
+const SPEC = Object.fromEntries(LAYERS.flatMap(l => l.details).map(d => [d.p, d]));
+const droneDefaults = () => ({
+  vals: Object.fromEntries(Object.values(SPEC).map(d => [d.p, d.def])),
+  fader: Object.fromEntries(FADERS.map(id => [id, 0])), mute: {}, solo: {},
+  macro: Object.fromEntries(MACROS.map(m => [m.id, 50])),
+});
+let dm = droneDefaults(), frozen = false;
+try {
+  const s = JSON.parse(localStorage.getItem("musicbox-drone") || "null");
+  if (s) dm = { ...dm, ...s, vals: { ...dm.vals, ...(s.vals || {}) }, fader: { ...dm.fader, ...(s.fader || {}) }, macro: { ...dm.macro, ...(s.macro || {}) } };
+} catch (_) {}
+const saveDrone = () => { try { localStorage.setItem("musicbox-drone", JSON.stringify(dm)); } catch (_) {} };
+const snap = (p, v) => { const s = SPEC[p].step; return Math.min(SPEC[p].max, Math.max(SPEC[p].min, Math.round(v / s) * s)); };
+const engVal = p => SPEC[p].type === "toggle" ? (dm.vals[p] ? 1 : 0) : SPEC[p].eng(dm.vals[p]);
+const sendDrone = p => { if (kind === 0) send({ type: "param", name: p, value: engVal(p) }); };
+function gains() {
+  const anySolo = FADERS.some(id => dm.solo[id]);
+  return Object.fromEntries(FADERS.map(id => {
+    let g = dm.fader[id] <= -40 ? 0 : 10 ** (dm.fader[id] / 20);
+    if (dm.mute[id] || (anySolo && !dm.solo[id])) g = 0;
+    return [id, g];
+  }));
+}
+function sendGains() { if (kind !== 0) return; const g = gains(); for (const id of FADERS) send({ type: "param", name: `${id}_gain`, value: g[id] }); }
+function replayDrone() {
+  frozen = false; paintDrone();
+  if (kind !== 0) return;
+  for (const p in SPEC) if (dm.vals[p] !== SPEC[p].def) sendDrone(p);
+  if (Object.values(gains()).some(g => g !== 1)) sendGains();
+}
+
+// build the macros and layer rows
+$("macros").innerHTML = MACROS.map(m => `
+  <div class="macro"><label for="mc-${m.id}" class="label">${m.label}</label>
+    <input type="range" id="mc-${m.id}" min="0" max="100" step="1"><span class="unit">${m.hint}</span></div>`).join("");
+const ctlHtml = d => d.type === "toggle"
+  ? `<div class="ctl"><span class="label">${d.label}</span><button class="ab small tog" id="d-${d.p}" aria-pressed="false"></button></div>`
+  : `<div class="ctl"><label for="d-${d.p}" class="label">${d.label}</label>
+       <input type="range" id="d-${d.p}" min="${d.min}" max="${d.max}" step="${d.step}"><output id="do-${d.p}"></output></div>`;
+$("mixer").innerHTML = LAYERS.map(l => `
+  <li class="layer" id="ly-${l.id}">
+    <div class="lhead"><b>${l.name}</b><span class="ldesc">${l.desc}</span></div>
+    <div class="lctl">
+      ${l.noFader ? "" : `
+      <span class="lmeter" aria-hidden="true"><i id="lm-${l.id}"></i></span>
+      <input type="range" class="fader" id="lf-${l.id}" min="-40" max="6" step="0.5" aria-label="${l.name} level">
+      <output id="lo-${l.id}"></output>
+      <button class="ms mute" id="lmute-${l.id}" aria-pressed="false" title="Mute ${l.name}">M</button>
+      <button class="ms solo" id="lsolo-${l.id}" aria-pressed="false" title="Solo ${l.name}">S</button>`}
+      ${l.freeze ? `<button class="freeze" id="freeze" aria-pressed="false" title="Hold the reverb tail; the piece keeps playing on top">Freeze</button>` : ""}
+      <button class="more" id="lmore-${l.id}" aria-expanded="false" aria-controls="ld-${l.id}">Details</button>
+    </div>
+    <div class="ldetail" id="ld-${l.id}" hidden>${l.details.map(ctlHtml).join("")}</div>
+  </li>`).join("");
+
+function paintDrone() {
+  const anySolo = FADERS.some(id => dm.solo[id]);
+  for (const id of FADERS) {
+    const f = dm.fader[id];
+    $("lf-" + id).value = f;
+    $("lo-" + id).textContent = f <= -40 ? "−∞" : `${fmtDb(f)} dB`;
+    $("lmute-" + id).setAttribute("aria-pressed", String(!!dm.mute[id]));
+    $("lsolo-" + id).setAttribute("aria-pressed", String(!!dm.solo[id]));
+    $("ly-" + id).classList.toggle("dim", !!dm.mute[id] || (anySolo && !dm.solo[id]));
+  }
+  for (const p in SPEC) {
+    const d = SPEC[p], el = $("d-" + p);
+    if (d.type === "toggle") { el.setAttribute("aria-pressed", String(!!dm.vals[p])); el.textContent = dm.vals[p] ? "On" : "Off"; }
+    else { el.value = dm.vals[p]; $("do-" + p).textContent = d.fmt(+dm.vals[p]); }
+  }
+  for (const m of MACROS) $("mc-" + m.id).value = dm.macro[m.id];
+  $("freeze").setAttribute("aria-pressed", String(frozen));
+  $("freeze").textContent = frozen ? "Frozen" : "Freeze";
+}
+function showLevels(v) {
+  FADERS.forEach((id, i) => {
+    const db = v[i] > 1e-5 ? 20 * Math.log10(v[i]) : -60;
+    $("lm-" + id).style.transform = `scaleX(${Math.max(0, Math.min(1, (db + 48) / 48))})`;
+  });
+}
+for (const id of FADERS) {
+  $("lf-" + id).addEventListener("input", e => { dm.fader[id] = +e.target.value; sendGains(); paintDrone(); saveDrone(); });
+  $("lmute-" + id).addEventListener("click", () => { dm.mute[id] = !dm.mute[id]; sendGains(); paintDrone(); saveDrone(); });
+  $("lsolo-" + id).addEventListener("click", () => { dm.solo[id] = !dm.solo[id]; sendGains(); paintDrone(); saveDrone(); });
+}
+for (const l of LAYERS) $("lmore-" + l.id).addEventListener("click", e => {
+  const open = $("ld-" + l.id).hidden; $("ld-" + l.id).hidden = !open; e.target.setAttribute("aria-expanded", String(open));
+});
+for (const p in SPEC) {
+  const el = $("d-" + p);
+  if (SPEC[p].type === "toggle") el.addEventListener("click", () => { dm.vals[p] = dm.vals[p] ? 0 : 1; sendDrone(p); paintDrone(); saveDrone(); });
+  else el.addEventListener("input", () => { dm.vals[p] = +el.value; sendDrone(p); paintDrone(); saveDrone(); });
+}
+for (const m of MACROS) $("mc-" + m.id).addEventListener("input", e => {
+  dm.macro[m.id] = +e.target.value;
+  const vals = m.map(dm.macro[m.id]);
+  for (const p in vals) { dm.vals[p] = snap(p, vals[p]); sendDrone(p); }
+  paintDrone(); saveDrone();
+});
+$("freeze").addEventListener("click", () => {
+  frozen = !frozen;
+  if (kind === 0) send({ type: "param", name: "freeze", value: frozen ? 1 : 0 });
+  paintDrone();
+});
+$("mx-reset").addEventListener("click", () => {
+  dm = droneDefaults(); frozen = false;
+  if (kind === 0) { for (const p in SPEC) sendDrone(p); sendGains(); send({ type: "param", name: "freeze", value: 0 }); }
+  paintDrone(); saveDrone();
+});
+paintDrone();
 
 // ── scope: the stereo signal wrapped around a ring
 const cv = $("cv"), g = cv.getContext("2d");

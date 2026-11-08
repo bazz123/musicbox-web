@@ -27,7 +27,7 @@ Under the following terms:
 
 musicbox-web (this repository) adapts the work above: it compiles musicbox-core to
 WebAssembly, adds a browser player, and modifies the engine in engine/ to add key,
-scale and tuning options (listed in README.md). These changes are
+scale and tuning options and live mixer controls (listed in README.md). These changes are
 distributed under the same license, CC BY-SA 4.0.
 
 The Dattorro plate reverb in musicbox-core is ported from Mutable Instruments

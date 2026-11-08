@@ -27,6 +27,9 @@ pub struct DattorroReverb {
     lfo2_sin: f32,
     lfo_counter: u32,
     pub amount: f32,
+    /// Freeze target (0 or 1) and its smoothed value. Added in musicbox-web.
+    pub freeze: f32,
+    freeze_amt: f32,
     pub amount_lfo_phase: f32,
     pub amount_lfo_rate: f32,
     pub amount_min: f32,
@@ -66,6 +69,8 @@ impl DattorroReverb {
             lfo2_sin: 0.0,
             lfo_counter: 0,
             amount: (amount_min + amount_max) * 0.5,
+            freeze: 0.0,
+            freeze_amt: 0.0,
             amount_lfo_phase: rng.r#gen::<f32>(),
             amount_lfo_rate,
             amount_min,
@@ -108,16 +113,27 @@ impl DattorroReverb {
         }
         self.lfo_counter = self.lfo_counter.wrapping_add(1);
 
+        // Freeze (musicbox-web): ~50 ms crossfade to a closed, lossless tank.
+        if self.freeze_amt != self.freeze {
+            let step = 1.0 / (0.05 * self.sample_rate);
+            self.freeze_amt = if self.freeze > self.freeze_amt {
+                (self.freeze_amt + step).min(self.freeze)
+            } else {
+                (self.freeze_amt - step).max(self.freeze)
+            };
+        }
+        let fz = self.freeze_amt;
+
         let kap = self.diffusion;
-        let krt = self.reverb_time;
-        let klp = self.lp;
+        let krt = self.reverb_time + (1.0 - self.reverb_time) * fz;
+        let klp = self.lp + (1.0 - self.lp) * fz;
 
         let lfo1_uni = (self.lfo1_cos + 1.0) * 0.5;
         let ap1_mod_delay = 14.0 + lfo1_uni * 120.0;
         let ap1_mod_read = self.ap1.read_at_f(ap1_mod_delay);
         self.ap1.write_at(138, ap1_mod_read);
 
-        let sig = input * self.input_gain;
+        let sig = input * self.input_gain * (1.0 - fz);
         let ap1_out = Self::allpass(&mut self.ap1, sig, kap);
         let ap2_out = Self::allpass(&mut self.ap2, ap1_out, kap);
         let ap3_out = Self::allpass(&mut self.ap3, ap2_out, kap);
