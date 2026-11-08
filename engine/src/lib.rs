@@ -4,6 +4,7 @@ pub mod instruments;
 pub mod clocks;
 pub mod util;
 pub mod tracks;
+pub mod tuning;
 
 pub use track::{State, Track};
 
@@ -18,6 +19,11 @@ impl MusicBox {
     /// Construct with the default drone track.
     pub fn new(sample_rate: u32, seed: u64) -> Self {
         Self { track: Box::new(Drone::new(sample_rate, seed)) }
+    }
+
+    /// Construct the drone track in a given key, scale and tuning.
+    pub fn with_tuning(sample_rate: u32, seed: u64, tuning: tuning::Tuning) -> Self {
+        Self { track: Box::new(Drone::with_tuning(sample_rate, seed, tuning)) }
     }
 
     pub fn start_fade_out(&mut self) { self.track.start_fade_out(); }

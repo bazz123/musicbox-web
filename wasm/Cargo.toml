@@ -8,8 +8,8 @@ license = "CC-BY-SA-4.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-# The synthesis engine, unchanged, from Ben Askins' musicbox (pinned commit)
-musicbox-core = { git = "https://github.com/benaskins/musicbox", rev = "8aa47f2c9083d246f4cf3232c799599f2263b75f" }
+# Ben Askins' musicbox-core, vendored from 8aa47f2 and modified (tuning); see engine/
+musicbox-core = { path = "../engine" }
 getrandom = { version = "0.2", features = ["custom"] }
 
 [profile.release]

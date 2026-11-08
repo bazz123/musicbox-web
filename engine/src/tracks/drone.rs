@@ -5,6 +5,7 @@ use crate::effects::{DattorroReverb, ResonantLpf};
 use crate::instruments::oscillator::Oscillator;
 use crate::instruments::pluck::PluckEngine;
 use crate::track::{State, Track};
+use crate::tuning::{Tuning, MINOR_PENTATONIC};
 
 const FADE_DURATION: f32 = 3.0;
 
@@ -75,11 +76,25 @@ pub struct Drone {
 
 impl Drone {
     pub fn new(sample_rate: u32, seed: u64) -> Self {
+        Self::with_tuning(sample_rate, seed, Tuning::default())
+    }
+
+    pub fn with_tuning(sample_rate: u32, seed: u64, tuning: Tuning) -> Self {
         let sr = sample_rate as f32;
         let fade_samples = (sr * FADE_DURATION) as u32;
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-        let all_freqs = pentatonic_frequencies();
+        // Default tuning keeps the original note table exactly; otherwise build the
+        // same four octaves (A1..G4 in the original) from the chosen scale and tuning.
+        let scale: &[i32] = tuning.scale.unwrap_or(&MINOR_PENTATONIC);
+        let all_freqs: Vec<f32> = if tuning.is_default() {
+            pentatonic_frequencies()
+        } else {
+            (-3..=0).flat_map(|o| scale.iter().map(move |&i| (o, i)))
+                .map(|(o, i)| tuning.pitch(o * 12 + i)).collect()
+        };
+        // Scales with more notes add oscillators; keep the summed level about the same.
+        let k = (5.0 / scale.len() as f32).sqrt();
 
         let bass_freqs: Vec<f32> = all_freqs.iter().copied().filter(|&f| f < 130.0).collect();
         let mid_freqs: Vec<f32> = all_freqs
@@ -94,11 +109,11 @@ impl Drone {
             .filter(|&f| (330.0..800.0).contains(&f))
             .collect();
 
-        let bass = Layer::new(&bass_freqs, 0.15, 0.7, sr, &mut rng);
+        let bass = Layer::new(&bass_freqs, 0.15 * k, 0.7, sr, &mut rng);
         let mid_filter = ResonantLpf::new(200.0, 1200.0, 0.3, 0.065, sr, &mut rng);
-        let mid = Layer::new(&mid_freqs, 0.08, 0.5, sr, &mut rng).with_filter(mid_filter);
+        let mid = Layer::new(&mid_freqs, 0.08 * k, 0.5, sr, &mut rng).with_filter(mid_filter);
         let high_reverb = DattorroReverb::new(0.85, 0.4, 0.7, 0.04, sr, &mut rng);
-        let high = Layer::new(&high_freqs, 0.04, 0.3, sr, &mut rng).with_reverb(high_reverb);
+        let high = Layer::new(&high_freqs, 0.04 * k, 0.3, sr, &mut rng).with_reverb(high_reverb);
         let plucks = PluckEngine::new(pluck_freqs, 0.3, sr, &mut rng);
 
         Self {

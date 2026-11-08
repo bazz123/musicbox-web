@@ -6,6 +6,7 @@ use crate::instruments::{ClaveVoice, DubStab, HiHat, Kick, MonoSynth, Snare808, 
 use crate::clocks::{Clock, PulseOscillator, TimeSignature};
 use crate::util::prng::Xorshift64;
 use crate::track::{State, Track};
+use crate::tuning::{Tuning, AEOLIAN};
 
 /// Counts down an `Option<u32>` timer and runs `$body` when it hits zero.
 macro_rules! tick_timer {
@@ -248,6 +249,7 @@ pub struct AmbientTechno {
     mono: MonoSynth,
     mono_reverb: DattorroReverb,
     mono_step: usize,
+    tuning: Tuning,
     mono_seq_freqs: [f32; 16],  // realized sequence (rerolled every 8 playthroughs)
     mono_seq_repeats: u8,       // how many full playthroughs of the current sequence
     mono_downbeat_timer: Option<u32>,
@@ -276,6 +278,11 @@ pub struct AmbientTechno {
 
 impl AmbientTechno {
     pub fn new(sample_rate: u32, seed: u64) -> Self {
+        Self::with_tuning(sample_rate, seed, Tuning::default())
+    }
+
+    /// Construct in a given key, scale and tuning (see `crate::tuning`).
+    pub fn with_tuning(sample_rate: u32, seed: u64, tuning: Tuning) -> Self {
         let sr = sample_rate as f32;
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
@@ -335,9 +342,10 @@ impl AmbientTechno {
             mono: MonoSynth::new(sr),
             mono_reverb: DattorroReverb::new(0.82, 0.3, 0.7, 0.05, sr, &mut rng),
             mono_step: 0,
+            tuning: tuning.clone(),
             mono_seq_freqs: {
                 let mut f = [0.0f32; 16];
-                for i in 0..16 { f[i] = A_MINOR_SCALE[MONO_SEQ_IDX[i]]; }
+                for i in 0..16 { f[i] = tuning.map(A_MINOR_SCALE[MONO_SEQ_IDX[i]], &AEOLIAN); }
                 f
             },
             mono_seq_repeats: 0,
@@ -381,6 +389,20 @@ impl AmbientTechno {
         engine
     }
 
+    /// Pad chord on a root from PAD_FREQS. Default tuning keeps the original
+    /// equal-tempered minor triad; otherwise third and fifth follow the scale.
+    fn pad_chord(&mut self, src_root: f32) {
+        if self.tuning.is_default() {
+            self.pad.trigger_minor_chord(src_root);
+        } else {
+            let t = &self.tuning;
+            let root = t.map(src_root, &AEOLIAN);
+            let third = t.map(src_root * 2f32.powf(3.0 / 12.0), &AEOLIAN);
+            let fifth = t.map(src_root * 2f32.powf(7.0 / 12.0), &AEOLIAN);
+            self.pad.trigger_triad(root, third, fifth);
+        }
+    }
+
     fn regenerate_mono_seq(&mut self) {
         // Pick 4 unique positions from 1..=15 via partial Fisher-Yates (step 0 is always the anchor)
         let mut positions: [usize; 15] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
@@ -392,7 +414,7 @@ impl AmbientTechno {
             let base_idx = MONO_SEQ_IDX[pos];
             let shift = (self.mono_rng.next() % 7) as i32 - 3; // -3..=3
             let idx = (base_idx as i32 + shift).clamp(0, A_MINOR_SCALE.len() as i32 - 1) as usize;
-            self.mono_seq_freqs[pos] = A_MINOR_SCALE[idx];
+            self.mono_seq_freqs[pos] = self.tuning.map(A_MINOR_SCALE[idx], &AEOLIAN);
         }
     }
 
@@ -644,19 +666,19 @@ impl AmbientTechno {
                     }
                     PATTERN_STAB1 => {
                         let idx = (self.stab_rng.next() as usize) % STAB1_CHORDS.len();
-                        self.stab.trigger_with_chord(STAB1_CHORDS[idx], &mut self.stab_rng);
+                        self.stab.trigger_with_chord(self.tuning.map3(STAB1_CHORDS[idx], &AEOLIAN), &mut self.stab_rng);
                         self.last_stab_idx = idx;
                     }
                     PATTERN_STAB2 => {
-                        self.stab2.trigger_with_chord(STAB2_CHORDS[self.last_stab_idx], &mut self.stab_rng);
+                        self.stab2.trigger_with_chord(self.tuning.map3(STAB2_CHORDS[self.last_stab_idx], &AEOLIAN), &mut self.stab_rng);
                     }
                     PATTERN_STAB3 => {
                         let idx = (self.stab_rng.next() as usize) % STAB3_CHORDS.len();
-                        self.stab3.trigger_with_chord_and_cutoff(STAB3_CHORDS[idx], 600.0, &mut self.stab_rng);
+                        self.stab3.trigger_with_chord_and_cutoff(self.tuning.map3(STAB3_CHORDS[idx], &AEOLIAN), 600.0, &mut self.stab_rng);
                     }
                     PATTERN_PAD => {
                         let idx = (self.pad_rng.next() as usize) % PAD_FREQS.len();
-                        self.pad.trigger_minor_chord(PAD_FREQS[idx]);
+                        self.pad_chord(PAD_FREQS[idx]);
                     }
                     PATTERN_MONO => {
                         let dm = drift_mul(PATTERN_MONO, self);
@@ -669,7 +691,7 @@ impl AmbientTechno {
                     PATTERN_BASSLINE => {
                         let dm = drift_mul(PATTERN_BASSLINE, self);
                         let step = (self.beat_count % 8 * 4) as usize;
-                        if let Some(freq) = BASSLINE_PATTERN[step] {
+                        if let Some(freq) = BASSLINE_PATTERN[step].map(|f| self.tuning.map(f, &AEOLIAN)) {
                             self.bass.trigger(freq * dm, false);
                         }
                         self.beat_count = self.beat_count.wrapping_add(1);
@@ -712,12 +734,12 @@ impl AmbientTechno {
             if self.beat_count % 8 == 0 && self.is_active(PATTERN_PAD) {
                 // Every 8 beats: pick a new high pentatonic note for the pad
                 let idx = (self.pad_rng.next() as usize) % PAD_FREQS.len();
-                self.pad.trigger_minor_chord(PAD_FREQS[idx]);
+                self.pad_chord(PAD_FREQS[idx]);
             }
             if self.beat_count % 32 == 0 && self.is_active(PATTERN_STAB3) {
                 // Every 32nd beat (0, 32, 64…): trigger stab3 on the downbeat
                 let idx = (self.stab_rng.next() as usize) % STAB3_CHORDS.len();
-                self.stab3.trigger_with_chord_and_cutoff(STAB3_CHORDS[idx], 600.0, &mut self.stab_rng);
+                self.stab3.trigger_with_chord_and_cutoff(self.tuning.map3(STAB3_CHORDS[idx], &AEOLIAN), 600.0, &mut self.stab_rng);
             }
             if self.beat_count % 4 == 2 && self.is_active(PATTERN_SNARE) {
                 self.snare_timer = Some(sw);
@@ -766,7 +788,7 @@ impl AmbientTechno {
 
         tick_timer!(self.bassline_downbeat_timer, {
             let step = ((self.beat_count.wrapping_sub(1)) % 8 * 4) as usize;
-            if let Some(freq) = BASSLINE_PATTERN[step] {
+            if let Some(freq) = BASSLINE_PATTERN[step].map(|f| self.tuning.map(f, &AEOLIAN)) {
                 self.bass.trigger(freq, false);
             }
         });
@@ -785,12 +807,12 @@ impl AmbientTechno {
         });
         tick_timer!(self.stab_timer, {
             let idx = (self.stab_rng.next() as usize) % STAB1_CHORDS.len();
-            self.stab.trigger_with_chord(STAB1_CHORDS[idx], &mut self.stab_rng);
+            self.stab.trigger_with_chord(self.tuning.map3(STAB1_CHORDS[idx], &AEOLIAN), &mut self.stab_rng);
             self.last_stab_idx = idx;
         });
 
         tick_timer!(self.stab2_timer, {
-            self.stab2.trigger_with_chord(STAB2_CHORDS[self.last_stab_idx], &mut self.stab_rng);
+            self.stab2.trigger_with_chord(self.tuning.map3(STAB2_CHORDS[self.last_stab_idx], &AEOLIAN), &mut self.stab_rng);
         });
 
         tick_timer!(self.clave_timer, {
@@ -826,7 +848,7 @@ impl AmbientTechno {
             }
             if self.is_active(PATTERN_BASSLINE) {
                 let base = ((self.beat_count.wrapping_sub(1)) % 8 * 4) as usize;
-                if let Some(freq) = BASSLINE_PATTERN[base + 1] { self.bass.trigger(freq, false); }
+                if let Some(freq) = BASSLINE_PATTERN[base + 1].map(|f| self.tuning.map(f, &AEOLIAN)) { self.bass.trigger(freq, false); }
             }
         });
 
@@ -839,7 +861,7 @@ impl AmbientTechno {
             }
             if self.is_active(PATTERN_BASSLINE) {
                 let base = ((self.beat_count.wrapping_sub(1)) % 8 * 4) as usize;
-                if let Some(freq) = BASSLINE_PATTERN[base + 2] { self.bass.trigger(freq, false); }
+                if let Some(freq) = BASSLINE_PATTERN[base + 2].map(|f| self.tuning.map(f, &AEOLIAN)) { self.bass.trigger(freq, false); }
             }
         });
 
@@ -852,7 +874,7 @@ impl AmbientTechno {
             }
             if self.is_active(PATTERN_BASSLINE) {
                 let base = ((self.beat_count.wrapping_sub(1)) % 8 * 4) as usize;
-                if let Some(freq) = BASSLINE_PATTERN[base + 3] { self.bass.trigger(freq, false); }
+                if let Some(freq) = BASSLINE_PATTERN[base + 3].map(|f| self.tuning.map(f, &AEOLIAN)) { self.bass.trigger(freq, false); }
             }
         });
 

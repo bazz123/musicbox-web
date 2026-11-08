@@ -35,6 +35,13 @@ impl SynthPad {
         self.sustaining = true;
     }
 
+    /// Start an arbitrary triad (root, third, fifth) plus root +12 cents for width.
+    pub fn trigger_triad(&mut self, root: f32, third: f32, fifth: f32) {
+        self.trigger_minor_chord(root);
+        self.base_freqs[1] = third;
+        self.base_freqs[2] = fifth;
+    }
+
     /// Start a minor triad. Voices: root, minor third, perfect fifth, root+12 cents (for width).
     pub fn trigger_minor_chord(&mut self, root: f32) {
         let minor_third = root * 2_f32.powf(3.0 / 12.0);  // +3 semitones

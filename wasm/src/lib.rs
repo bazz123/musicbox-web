@@ -1,5 +1,6 @@
 use musicbox_core::{MusicBox, Track};
 use musicbox_core::tracks::ambient_techno::AmbientTechno;
+use musicbox_core::tuning::{scale_by_id, Intonation, Tuning};
 
 fn no_entropy(_: &mut [u8]) -> Result<(), getrandom::Error> { Err(getrandom::Error::UNSUPPORTED) }
 getrandom::register_custom_getrandom!(no_entropy);
@@ -15,10 +16,19 @@ static mut NAME: [u8; 64] = [0; 64];
 fn st() -> &'static mut State { unsafe { STATE.as_mut().unwrap() } }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mb_init(kind: u32, sample_rate: u32, seed_hi: u32, seed_lo: u32) {
+/// root: semitones from A (-5..=6); scale: 0 = original, see `scale_by_id`;
+/// reference: A4 in Hz; intonation: 0 equal, 1 just (5-limit), 2 just (7-limit).
+pub extern "C" fn mb_init(kind: u32, sample_rate: u32, seed_hi: u32, seed_lo: u32,
+                          root: i32, scale: u32, reference: f32, intonation: u32) {
+    let tuning = Tuning {
+        root: root.clamp(-5, 6),
+        scale: scale_by_id(scale),
+        reference: if reference > 300.0 && reference < 600.0 { reference } else { 440.0 },
+        intonation: match intonation { 1 => Intonation::Just5, 2 => Intonation::Just7, _ => Intonation::Equal },
+    };
     let seed = ((seed_hi as u64) << 32) | seed_lo as u64;
-    let engine = if kind == 1 { Engine::Techno(AmbientTechno::new(sample_rate, seed)) }
-                 else { Engine::Drone(MusicBox::new(sample_rate, seed)) };
+    let engine = if kind == 1 { Engine::Techno(AmbientTechno::with_tuning(sample_rate, seed, tuning)) }
+                 else { Engine::Drone(MusicBox::with_tuning(sample_rate, seed, tuning)) };
     unsafe { STATE = Some(State { engine, l: vec![0.0; 4096], r: vec![0.0; 4096] }); }
 }
 

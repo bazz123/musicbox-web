@@ -1,3 +1,4 @@
 wasm/target/
 wasm/Cargo.lock
 .DS_Store
+engine/target/

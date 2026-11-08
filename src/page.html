@@ -80,6 +80,15 @@ button:focus-visible, #seed:focus-visible { outline: 2px solid var(--led); outli
 #auto { font: 500 12px/1 var(--f-body); border: 1px solid var(--rule); background: none; color: var(--ink); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
 #auto[disabled] { opacity: .45; cursor: default; }
 
+/* key and tuning */
+.tune-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+@media (max-width: 480px) { .tune-row { grid-template-columns: minmax(0, 1fr); } }
+.seg3 { grid-template-columns: repeat(3, 1fr); }
+.seg3 button { padding: 9px 4px; font-size: 13px; }
+.note { display: inline-grid; gap: 3px; text-align: center; }
+.note small { font: 400 9.5px/1 var(--f-mono); color: var(--muted); }
+.note.root { border-color: var(--led); color: var(--ink); }
+
 /* master section */
 .master { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 20px; display: grid; gap: 18px; }
 .master-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px 20px; flex-wrap: wrap; }
@@ -139,7 +148,7 @@ footer a { color: var(--ink); }
       <h1>music<span>box</span></h1>
       <p class="sub">Generative music from Ben Askins’ Rust engine, compiled to WebAssembly and running in your browser. Every seed plays a different piece.</p>
     </div>
-    <span class="label">A minor pentatonic · 32-bit float</span>
+    <span class="label" id="key-label">A minor pentatonic · A4 = 440 Hz · equal</span>
   </header>
 
   <div class="main">
@@ -150,9 +159,7 @@ footer a { color: var(--ink); }
       </div>
       <canvas id="cv" width="800" height="800" aria-hidden="true"></canvas>
       <div class="scope-foot">
-        <div class="notes" aria-label="Scale">
-          <span class="note">A</span><span class="note">C</span><span class="note">D</span><span class="note">E</span><span class="note">G</span>
-        </div>
+        <div class="notes" id="notes" aria-label="Scale notes"></div>
         <span class="readout" id="peak">peak −∞ dB</span>
       </div>
     </section>
@@ -175,6 +182,43 @@ footer a { color: var(--ink); }
       </div>
       <p class="hint">The same seed always plays the same piece. Change it while playing to jump to a new one.</p>
       <p id="err" hidden></p>
+
+      <div class="group tuning">
+        <span class="label">Key and tuning</span>
+        <div class="tune-row">
+          <div class="ctl">
+            <label for="t-root" class="label">Key</label>
+            <select id="t-root"></select>
+          </div>
+          <div class="ctl">
+            <label for="t-scale" class="label">Scale</label>
+            <select id="t-scale">
+              <option value="0">Original</option>
+              <option value="1">Minor pentatonic</option>
+              <option value="2">Natural minor</option>
+              <option value="3">Dorian</option>
+              <option value="4">Phrygian</option>
+              <option value="5">In-sen</option>
+              <option value="6">Hirajoshi</option>
+            </select>
+          </div>
+        </div>
+        <div class="tune-row">
+          <div class="ctl">
+            <span class="label" id="ref-l">A4 reference</span>
+            <div class="seg seg3" role="group" aria-labelledby="ref-l">
+              <button data-ref="432">432</button><button data-ref="440">440</button><button data-ref="442">442</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <span class="label" id="int-l">Intonation</span>
+            <div class="seg seg3" role="group" aria-labelledby="int-l">
+              <button data-inton="0" title="12-tone equal temperament">Equal</button><button data-inton="1" title="5-limit just intonation, minor seventh 9/5">Just 5</button><button data-inton="2" title="7-limit just intonation, harmonic seventh 7/4">Just 7</button>
+            </div>
+          </div>
+        </div>
+        <p class="hint" id="tune-hint"></p>
+      </div>
 
       <div class="group" id="drone-info">
         <span class="label">What you’ll hear</span>
@@ -301,7 +345,7 @@ class MB extends AudioWorkletProcessor {
         if (data.type === "init") {
           if (!this.mod) this.mod = new WebAssembly.Module(data.bytes);
           this.e = new WebAssembly.Instance(this.mod, {}).exports;
-          this.e.mb_init(data.kind, sampleRate, data.hi >>> 0, data.lo >>> 0);
+          this.e.mb_init(data.kind, sampleRate, data.hi >>> 0, data.lo >>> 0, data.root | 0, data.scale | 0, data.ref, data.inton | 0);
           this.done = false;
           this.port.postMessage({ type: "ready" });
         } else if (data.type === "fade" && this.e) {
@@ -543,6 +587,52 @@ function parseSeed(s) {
 }
 $("seed").value = randSeed();
 
+// ── key and tuning (the engine does the re-tuning; see engine/src/tuning.rs)
+const SHARP = ["A", "A♯", "B", "C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯"];
+const FLAT  = ["A", "B♭", "B", "C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭"];
+const SCALES = [null, [0,3,5,7,10], [0,2,3,5,7,8,10], [0,2,3,5,7,9,10], [0,1,3,5,7,8,10], [0,1,5,7,10], [0,2,3,7,8]];
+const SCALE_NAMES = ["", "minor pentatonic", "natural minor", "Dorian", "Phrygian", "In-sen", "Hirajoshi"];
+const RATIO5 = ["1/1","16/15","9/8","6/5","5/4","4/3","45/32","3/2","8/5","5/3","9/5","15/8"];
+const RATIO7 = RATIO5.map((r, i) => i === 6 ? "7/5" : i === 10 ? "7/4" : r);
+let tune = { root: 0, scale: 0, ref: 440, inton: 0 };
+try { const t = JSON.parse(localStorage.getItem("musicbox-tuning") || "null"); if (t) tune = { ...tune, ...t }; } catch (_) {}
+
+const rootSel = $("t-root");
+for (let r = -5; r <= 6; r++) rootSel.add(new Option(SHARP[(r + 12) % 12], String(r)));
+// flats for the minor-flavoured degrees (♭2, ♭3, ♭6, ♭7), sharps otherwise
+const noteName = (root, iv) => ([1, 3, 8, 10].includes(iv) ? FLAT : SHARP)[((root + iv) % 12 + 12) % 12];
+function currentScale() {
+  if (tune.scale) return { iv: SCALES[tune.scale], name: SCALE_NAMES[tune.scale] };
+  return kind === 0 ? { iv: SCALES[1], name: "minor pentatonic" } : { iv: SCALES[2], name: "natural minor" };
+}
+function paintTune() {
+  rootSel.value = String(tune.root); $("t-scale").value = String(tune.scale);
+  document.querySelectorAll("[data-ref]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.ref === tune.ref)));
+  document.querySelectorAll("[data-inton]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.inton === tune.inton)));
+  const sc = currentScale(), ratios = tune.inton === 2 ? RATIO7 : RATIO5;
+  $("notes").innerHTML = sc.iv.map((iv, i) =>
+    `<span class="note${i === 0 ? " root" : ""}">${noteName(tune.root, iv)}${tune.inton ? `<small>${ratios[iv]}</small>` : ""}</span>`).join("");
+  const into = ["equal", "just 5-limit", "just 7-limit"][tune.inton];
+  $("key-label").textContent = `${SHARP[(tune.root + 12) % 12]} ${sc.name} · A4 = ${tune.ref} Hz · ${into}`;
+  $("tune-hint").textContent = [
+    tune.scale ? "" : "Original keeps each style’s own scale (drone: minor pentatonic, techno: natural minor).",
+    tune.inton === 1 ? "Just 5 tunes pure 3/2 fifths and 5/4 thirds from the key root. Its minor seventh, 9/5, is also one of the techno pulse ratios." : "",
+    tune.inton === 2 ? "Just 7 swaps in the harmonic seventh 7/4, the same ratio as the 7/4 pulse, so pitch and rhythm share one ratio." : "",
+    "Changing these restarts the piece from the same seed.",
+  ].filter(Boolean).join(" ");
+}
+function setTune(change) {
+  tune = { ...tune, ...change };
+  try { localStorage.setItem("musicbox-tuning", JSON.stringify(tune)); } catch (_) {}
+  paintTune();
+  if (playing && !stopping) restart();
+}
+rootSel.addEventListener("change", () => setTune({ root: +rootSel.value }));
+$("t-scale").addEventListener("change", e => setTune({ scale: +e.target.value }));
+document.querySelectorAll("[data-ref]").forEach(b => b.addEventListener("click", () => setTune({ ref: +b.dataset.ref })));
+document.querySelectorAll("[data-inton]").forEach(b => b.addEventListener("click", () => setTune({ inton: +b.dataset.inton })));
+paintTune();
+
 // ── voices UI
 const vbox = $("voices");
 VOICES.forEach(([id, name]) => {
@@ -615,7 +705,7 @@ async function ensureCtx() {
 function initEngine() {
   const s = parseSeed($("seed").value);
   $("seed").value = s.text;
-  send({ type: "init", bytes: wasmBytes, kind, hi: s.hi, lo: s.lo });
+  send({ type: "init", bytes: wasmBytes, kind, hi: s.hi, lo: s.lo, root: tune.root, scale: tune.scale, ref: tune.ref, inton: tune.inton });
   resetMeters();
 }
 
@@ -717,6 +807,7 @@ document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click"
   kind = k;
   document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
   $("drone-info").hidden = k !== 0; $("techno-info").hidden = k !== 1;
+  paintTune();
   manual = false; $("auto").disabled = true; $("mix-label").textContent = "Voices · auto arrangement";
   VOICES.forEach(([id]) => vstate[id].on = false); paintVoices();
   if (playing && !stopping) restart();
