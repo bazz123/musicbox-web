@@ -83,6 +83,53 @@ button:focus-visible, #seed:focus-visible { outline: 2px solid var(--led); outli
 #auto { font: 500 12px/1 var(--f-body); border: 1px solid var(--rule); background: none; color: var(--ink); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
 #auto[disabled] { opacity: .45; cursor: default; }
 
+/* master section */
+.master { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 20px; display: grid; gap: 18px; }
+.master-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px 20px; flex-wrap: wrap; }
+.master h2 { font: 700 24px/1.1 var(--f-display); letter-spacing: -.02em; margin: 0 0 4px; }
+.ab { font: 600 13px/1 var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 5px; padding: 10px 14px; cursor: pointer; }
+.ab[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.ab.small { padding: 7px 10px; font-size: 12px; justify-self: start; }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.presets .label { margin-right: 4px; }
+.presets button { font: 500 13px/1 var(--f-body); color: var(--ink); background: none; border: 1px solid var(--rule); border-radius: 999px; padding: 7px 12px; cursor: pointer; }
+.presets button:hover { border-color: var(--led); }
+.master-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; }
+@media (max-width: 820px) { .master-grid { grid-template-columns: minmax(0, 1fr); } }
+.strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; align-content: start; }
+@media (max-width: 480px) { .strip { grid-template-columns: minmax(0, 1fr); } }
+.ctl { display: grid; gap: 6px; min-width: 0; }
+.ctl.wide { grid-column: 1 / -1; }
+.ctl select { font: 500 14px/1 var(--f-mono); color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 8px; width: 100%; }
+.ctl input[type=range] { width: 100%; accent-color: var(--led); margin: 6px 0 0; }
+.ctl output, .unit { font: 400 12px/1 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.seg4 { grid-template-columns: repeat(4, 1fr); }
+.seg4 button { font-family: var(--f-mono); }
+.meters { display: grid; gap: 14px; align-content: start; font-variant-numeric: tabular-nums; }
+.big { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.bignum { font: 400 14px/1 var(--f-mono); color: var(--muted); }
+.bignum b { font: 700 40px/1 var(--f-display); color: var(--ink); letter-spacing: -.02em; }
+.bar { position: relative; height: 14px; background: var(--bg); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; margin-bottom: 16px; overflow: visible; }
+.bar i { position: absolute; inset: 0 auto 0 0; width: 100%; background: var(--trace); transform-origin: left; transform: scaleX(0); transition: transform .08s linear; border-radius: 2px; }
+.bar em { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--led); }
+.bar span { position: absolute; top: 18px; font: 400 10px/1 var(--f-mono); color: var(--muted); transform: translateX(-50%); }
+.bar > span:nth-of-type(1) { left: 0; transform: none; }
+.bar > span:last-of-type { left: auto; right: 0; transform: none; }
+#b-S ~ span:nth-of-type(2) { left: 42.5%; } #b-S ~ span:nth-of-type(3) { left: 65%; }
+.gr i { inset: 0 0 0 auto; transform-origin: right; background: var(--led); }
+.gr span:nth-of-type(1) { left: auto !important; right: 0; } .gr span:nth-of-type(2) { left: 50%; } .gr span:nth-of-type(3) { left: 0 !important; right: auto !important; }
+.corr i { left: 50%; width: 50%; transform-origin: left; }
+.corr i.neg { background: var(--led); transform-origin: left; }
+.corr span:nth-of-type(2) { left: 50%; }
+.read { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
+.read div { border-top: 1px solid var(--rule); padding-top: 8px; }
+.read dt { font: 500 11px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.read dd { margin: 6px 0 0; font: 400 12px/1 var(--f-mono); color: var(--muted); }
+.read dd b { font: 600 18px/1 var(--f-mono); color: var(--ink); }
+.read dd b.over { color: var(--led); }
+.minibar { display: grid; gap: 6px; }
+.minibar b { color: var(--ink); font-weight: 500; }
+
 footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 6px 20px; }
 footer a { color: var(--ink); }
 #err { color: var(--led); font-size: 13px; margin: 0; }
@@ -154,6 +201,93 @@ footer a { color: var(--ink); }
     </section>
   </div>
 
+  <section class="master" aria-labelledby="master-h">
+    <div class="master-head">
+      <div>
+        <h2 id="master-h">Master</h2>
+        <p class="hint">Low cut → tilt EQ → mono bass and width → drive and loudness target → true-peak limiter. Meters follow EBU R128.</p>
+      </div>
+      <button id="bypass" class="ab" aria-pressed="false" title="Compare with the unprocessed engine output">A/B bypass</button>
+    </div>
+
+    <div class="presets" role="group" aria-label="Presets">
+      <span class="label">Presets</span>
+      <button data-preset="flat">Flat</button>
+      <button data-preset="laptop">Laptop speakers</button>
+      <button data-preset="phones">Headphones</button>
+      <button data-preset="stream">Streaming −14</button>
+      <button data-preset="r128">Broadcast R128</button>
+    </div>
+
+    <div class="master-grid">
+      <div class="strip">
+        <div class="ctl">
+          <label for="m-lowcut" class="label">Low cut</label>
+          <select id="m-lowcut"><option value="0">Off</option><option value="20">20 Hz</option><option value="30">30 Hz</option><option value="40">40 Hz</option><option value="60">60 Hz</option><option value="80">80 Hz</option></select>
+          <span class="unit">24 dB/oct</span>
+        </div>
+        <div class="ctl">
+          <label for="m-tilt" class="label">Tilt</label>
+          <input type="range" id="m-tilt" min="-4" max="4" step="0.5">
+          <output id="o-tilt"></output>
+        </div>
+        <div class="ctl">
+          <label for="m-mono" class="label">Mono below</label>
+          <select id="m-mono"><option value="0">Off</option><option value="80">80 Hz</option><option value="120">120 Hz</option><option value="160">160 Hz</option><option value="200">200 Hz</option></select>
+          <span class="unit">side high-pass</span>
+        </div>
+        <div class="ctl">
+          <label for="m-width" class="label">Width</label>
+          <input type="range" id="m-width" min="0" max="150" step="5">
+          <output id="o-width"></output>
+        </div>
+        <div class="ctl">
+          <label for="m-drive" class="label">Drive</label>
+          <input type="range" id="m-drive" min="-12" max="12" step="0.5">
+          <output id="o-drive"></output>
+        </div>
+        <div class="ctl">
+          <label for="m-ceiling" class="label">Ceiling</label>
+          <select id="m-ceiling"><option value="-0.3">−0.3 dBTP</option><option value="-1">−1.0 dBTP</option><option value="-2">−2.0 dBTP</option></select>
+          <span class="unit">5 ms look-ahead</span>
+        </div>
+        <div class="ctl wide">
+          <span class="label" id="target-l">Loudness target</span>
+          <div class="seg seg4" role="group" aria-labelledby="target-l">
+            <button data-target="0">Off</button><button data-target="-23">−23</button><button data-target="-16">−16</button><button data-target="-14">−14</button>
+          </div>
+          <span class="unit" id="agc-read">rides gain on short-term loudness, ±12 dB</span>
+        </div>
+      </div>
+
+      <div class="meters" aria-live="off">
+        <div class="big">
+          <span class="label">Short-term</span>
+          <span class="bignum"><b id="r-S">—</b> LUFS</span>
+        </div>
+        <div class="bar" title="Short-term loudness, −40 to 0 LUFS">
+          <i id="b-S"></i><em id="b-T" hidden></em>
+          <span>−40</span><span>−23</span><span>−14</span><span>0</span>
+        </div>
+        <dl class="read">
+          <div><dt>Momentary</dt><dd><b id="r-M">—</b> LUFS</dd></div>
+          <div><dt>Integrated</dt><dd><b id="r-I">—</b> LUFS</dd></div>
+          <div><dt>True peak max</dt><dd><b id="r-TP">—</b> dBTP</dd></div>
+          <div><dt>Gain reduction</dt><dd><b id="r-GR">0.0</b> dB</dd></div>
+        </dl>
+        <div class="minibar">
+          <span class="label">Gain reduction</span>
+          <div class="bar gr"><i id="b-GR"></i><span>0</span><span>−6</span><span>−12</span></div>
+        </div>
+        <div class="minibar">
+          <span class="label">Phase correlation <b id="r-C">—</b></span>
+          <div class="bar corr"><i id="b-C"></i><span>−1</span><span>0</span><span>+1</span></div>
+        </div>
+        <button id="m-reset" class="ab small">Reset meters</button>
+      </div>
+    </div>
+  </section>
+
   <footer>
     <span>Engine: <a href="https://github.com/benaskins/musicbox" target="_blank" rel="noopener">benaskins/musicbox</a> by Ben Askins, CC BY-SA 4.0</span>
     <span>Plate reverb after Émilie Gillet’s Mutable Instruments code, MIT</span>
@@ -196,6 +330,191 @@ class MB extends AudioWorkletProcessor {
   }
 }
 registerProcessor("musicbox", MB);
+
+// ───────────────────────── Master section ─────────────────────────
+// Chain: low cut (24 dB/oct) → tilt EQ (1 kHz pivot) → M/S: side high-passed
+// below the mono frequency, scaled by width → drive + loudness-target gain →
+// true-peak look-ahead limiter → metering (ITU-R BS.1770 / EBU R128).
+
+// RBJ biquad coefficients, normalised
+function coeffs(type, f, Q, dB, fs) {
+  const w = 2 * Math.PI * Math.min(f, fs * 0.45) / fs, cs = Math.cos(w), sn = Math.sin(w);
+  const al = sn / (2 * Q), A = Math.pow(10, dB / 40), sA = 2 * Math.sqrt(A) * al;
+  let b0, b1, b2, a0, a1, a2;
+  if (type === "hp") { b0 = (1 + cs) / 2; b1 = -(1 + cs); b2 = b0; a0 = 1 + al; a1 = -2 * cs; a2 = 1 - al; }
+  else if (type === "ls") {
+    b0 = A * ((A + 1) - (A - 1) * cs + sA); b1 = 2 * A * ((A - 1) - (A + 1) * cs); b2 = A * ((A + 1) - (A - 1) * cs - sA);
+    a0 = (A + 1) + (A - 1) * cs + sA; a1 = -2 * ((A - 1) + (A + 1) * cs); a2 = (A + 1) + (A - 1) * cs - sA;
+  } else { // high shelf
+    b0 = A * ((A + 1) + (A - 1) * cs + sA); b1 = -2 * A * ((A - 1) + (A + 1) * cs); b2 = A * ((A + 1) + (A - 1) * cs - sA);
+    a0 = (A + 1) - (A - 1) * cs + sA; a1 = 2 * ((A - 1) - (A + 1) * cs); a2 = (A + 1) - (A - 1) * cs - sA;
+  }
+  return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 };
+}
+class BQ { // transposed direct form II
+  constructor(c) { this.c = c; this.z1 = 0; this.z2 = 0; }
+  run(x) { const c = this.c, y = c.b0 * x + this.z1; this.z1 = c.b1 * x - c.a1 * y + this.z2; this.z2 = c.b2 * x - c.a2 * y; return y; }
+}
+
+// 4× oversampling interpolator for true-peak detection: 49-tap windowed sinc, 4 phases.
+// Phase p of the output at input n estimates x(n - 6 + p/4).
+const TP_TAPS = (() => {
+  const ph = [[], [], [], []];
+  for (let k = 0; k < 49; k++) {
+    const t = (k - 24) / 4, s = t === 0 ? 1 : Math.sin(Math.PI * t) / (Math.PI * t);
+    const win = 0.5 - 0.5 * Math.cos(2 * Math.PI * (k + 0.5) / 49);
+    ph[k % 4].push(s * win);
+  }
+  return ph.map(p => { const sum = p.reduce((a, b) => a + b, 0); return Float64Array.from(p, v => v / sum); });
+})();
+class TruePeak {
+  constructor() { this.h = new Float64Array(16); this.i = 0; }
+  // push one sample, return the max |value| of the 4 interpolated points
+  push(x) {
+    this.h[this.i = (this.i + 1) & 15] = x;
+    let m = 0;
+    for (let p = 0; p < 4; p++) {
+      const t = TP_TAPS[p]; let y = 0;
+      for (let j = 0; j < t.length; j++) y += t[j] * this.h[(this.i - j) & 15];
+      if (y < 0) y = -y; if (y > m) m = y;
+    }
+    return m;
+  }
+}
+
+const db = x => 20 * Math.log10(Math.max(x, 1e-12));
+const lufs = z => z > 0 ? -0.691 + 10 * Math.log10(z) : -Infinity;
+
+class Master extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    const fs = sampleRate;
+    this.p = { bypass: false, lowcut: 0, tilt: 0, mono: 0, width: 100, drive: 0, target: 0, ceiling: -1 };
+    this.build();
+    // limiter: 5 ms look-ahead, 150 ms release
+    this.L = Math.round(0.005 * fs);
+    this.D = this.L + 6;                       // audio delay = look-ahead + interpolator latency
+    this.dl = new Float32Array(this.D + 1); this.dr = new Float32Array(this.D + 1);
+    this.xl = new Float32Array(this.D + 1); this.xr = new Float32Array(this.D + 1);
+    this.dpos = 0;
+    this.W = this.L + 2;                       // min-hold window
+    this.qv = new Float64Array(this.W + 2); this.qt = new Int32Array(this.W + 2);
+    this.qh = 0; this.qn = 0; this.t = 0;
+    this.box = new Float64Array(this.L); this.bpos = 0; this.bsum = this.L;
+    this.box.fill(1);
+    this.env = 1; this.rel = 1 - Math.exp(-1 / (0.15 * fs));
+    this.tpL = new TruePeak(); this.tpR = new TruePeak();
+    this.oL = new TruePeak(); this.oR = new TruePeak();
+    // smoothed gains
+    this.gs = 1; this.ws = 1; this.mix = 1; this.sm = 1 - Math.exp(-1 / (0.02 * fs));
+    this.agc = 0;
+    // K-weighting (BS.1770): +4 dB shelf at 1.5 kHz, 38 Hz high-pass
+    const k1 = coeffs("hs", 1500, Math.SQRT1_2, 4, fs), k2 = coeffs("hp", 38, 0.5, 0, fs);
+    this.kl = [new BQ(k1), new BQ(k2)]; this.kr = [new BQ(k1), new BQ(k2)];
+    this.sub = Math.round(0.1 * fs); this.reset();
+    this.port.onmessage = ({ data }) => {
+      if (data.type === "set") { Object.assign(this.p, data.params); this.build(); }
+      if (data.type === "reset") this.reset();
+    };
+  }
+  reset() {
+    this.acc = 0; this.n = 0; this.blocks = []; this.gated = [];
+    this.tpMax = 0; this.tpNow = 0; this.grMin = 1;
+    this.cLR = 0; this.cLL = 0; this.cRR = 0;
+    this.lastI = -Infinity; this.since = 0;
+  }
+  build() {
+    const fs = sampleRate, p = this.p;
+    const lc = q => new BQ(coeffs("hp", p.lowcut || 20, q, 0, fs));
+    this.lcL = p.lowcut ? [lc(0.5412), lc(1.3066)] : null;
+    this.lcR = p.lowcut ? [lc(0.5412), lc(1.3066)] : null;
+    this.tL = p.tilt ? [new BQ(coeffs("ls", 1000, Math.SQRT1_2, -p.tilt, fs)), new BQ(coeffs("hs", 1000, Math.SQRT1_2, p.tilt, fs))] : null;
+    this.tR = p.tilt ? [new BQ(coeffs("ls", 1000, Math.SQRT1_2, -p.tilt, fs)), new BQ(coeffs("hs", 1000, Math.SQRT1_2, p.tilt, fs))] : null;
+    this.ms = p.mono ? [new BQ(coeffs("hp", p.mono, Math.SQRT1_2, 0, fs)), new BQ(coeffs("hp", p.mono, Math.SQRT1_2, 0, fs))] : null;
+    this.ceil = Math.pow(10, p.ceiling / 20);
+  }
+  process(inputs, outputs) {
+    const inp = inputs[0], out = outputs[0];
+    if (!out || !out.length) return true;
+    const n = out[0].length, oL = out[0], oR = out[1] || out[0];
+    const iL = inp && inp[0], iR = inp && (inp[1] || inp[0]);
+    const p = this.p, ceil = this.ceil;
+    const gTarget = Math.pow(10, (p.drive + (p.target ? this.agc : 0)) / 20), wTarget = p.width / 100, mixT = p.bypass ? 0 : 1;
+    for (let i = 0; i < n; i++) {
+      let l = iL ? iL[i] : 0, r = iR ? iR[i] : 0;
+      const dryL = l, dryR = r;
+      if (this.lcL) { l = this.lcL[1].run(this.lcL[0].run(l)); r = this.lcR[1].run(this.lcR[0].run(r)); }
+      if (this.tL) { l = this.tL[1].run(this.tL[0].run(l)); r = this.tR[1].run(this.tR[0].run(r)); }
+      this.ws += (wTarget - this.ws) * this.sm;
+      const m = (l + r) * 0.5; let s = (l - r) * 0.5;
+      if (this.ms) s = this.ms[1].run(this.ms[0].run(s));
+      s *= this.ws;
+      this.gs += (gTarget - this.gs) * this.sm;
+      l = (m + s) * this.gs; r = (m - s) * this.gs;
+
+      // detector: inter-sample peak, gain needed to stay under the ceiling
+      const pk = Math.max(this.tpL.push(l), this.tpR.push(r), Math.abs(l), Math.abs(r));
+      const req = pk > ceil ? ceil / pk : 1;
+      // sliding minimum over W samples (monotonic deque)
+      const t = this.t++, cap = this.qv.length;
+      while (this.qn > 0 && this.qv[(this.qh + this.qn - 1) % cap] >= req) this.qn--;
+      this.qv[(this.qh + this.qn) % cap] = req; this.qt[(this.qh + this.qn) % cap] = t; this.qn++;
+      while (this.qt[this.qh] <= t - this.W) { this.qh = (this.qh + 1) % cap; this.qn--; }
+      const mn = this.qv[this.qh];
+      this.env = mn < this.env ? mn : this.env + (mn - this.env) * this.rel;
+      this.bsum += this.env - this.box[this.bpos]; this.box[this.bpos] = this.env; this.bpos = (this.bpos + 1) % this.L;
+      const g = Math.min(1, this.bsum / this.L);
+      if (g < this.grMin) this.grMin = g;
+
+      // delay lines (processed and dry), so bypass A/B is time-aligned
+      const d = this.dpos, rd = (d + 1) % (this.D + 1);
+      this.dl[d] = l; this.dr[d] = r; this.xl[d] = dryL; this.xr[d] = dryR;
+      let yl = this.dl[rd] * g, yr = this.dr[rd] * g;
+      yl = yl > ceil ? ceil : yl < -ceil ? -ceil : yl;
+      yr = yr > ceil ? ceil : yr < -ceil ? -ceil : yr;
+      this.dpos = rd;
+      this.mix += (mixT - this.mix) * this.sm;
+      yl = yl * this.mix + this.xl[rd] * (1 - this.mix);
+      yr = yr * this.mix + this.xr[rd] * (1 - this.mix);
+      oL[i] = yl; if (out[1]) oR[i] = yr;
+
+      // meters
+      const tp = Math.max(this.oL.push(yl), this.oR.push(yr));
+      if (tp > this.tpMax) this.tpMax = tp;
+      if (tp > this.tpNow) this.tpNow = tp;
+      const kl = this.kl[1].run(this.kl[0].run(yl)), kr = this.kr[1].run(this.kr[0].run(yr));
+      this.acc += kl * kl + kr * kr;
+      this.cLR += yl * yr; this.cLL += yl * yl; this.cRR += yr * yr;
+      if (++this.n >= this.sub) this.subBlock();
+    }
+    return true;
+  }
+  subBlock() {
+    // one 100 ms block: momentary = last 4 (400 ms), short-term = last 30 (3 s)
+    this.blocks.push(this.acc / this.n); if (this.blocks.length > 30) this.blocks.shift();
+    this.acc = 0; this.n = 0;
+    const b = this.blocks, mean = k => { const s = b.slice(-k); return s.reduce((a, v) => a + v, 0) / s.length; };
+    const zM = mean(4), zS = mean(30), M = lufs(zM), S = lufs(zS);
+    if (b.length >= 4 && M > -70) this.gated.push(zM);        // absolute gate, 75 % overlap
+    if (++this.since >= 5 && this.gated.length) {               // integrated, relative gate −10 LU
+      this.since = 0;
+      const g = this.gated, rel = lufs(g.reduce((a, v) => a + v, 0) / g.length) - 10;
+      let s = 0, c = 0; for (const v of g) if (lufs(v) > rel) { s += v; c++; }
+      this.lastI = c ? lufs(s / c) : -Infinity;
+    }
+    // loudness target: slow gain ride on short-term loudness, ±12 dB, 1 dB/s max
+    if (this.p.target && b.length >= 10 && S > -45) {
+      const step = Math.max(-0.1, Math.min(0.1, this.p.target - S));
+      this.agc = Math.max(-12, Math.min(12, this.agc + step));
+    }
+    const corr = this.cLL > 1e-9 && this.cRR > 1e-9 ? this.cLR / Math.sqrt(this.cLL * this.cRR) : 1;
+    this.cLR *= 0.5; this.cLL *= 0.5; this.cRR *= 0.5;
+    this.port.postMessage({ type: "meter", M, S, I: this.lastI, tpMax: db(this.tpMax), tpNow: db(this.tpNow),
+      gr: db(this.grMin), corr, agc: this.p.target ? this.agc : 0 });
+    this.tpNow = 0; this.grMin = 1;
+  }
+}
+registerProcessor("master", Master);
 </script>
 
 <script>
@@ -286,7 +605,10 @@ async function ensureCtx() {
   node = new AudioWorkletNode(ctx, "musicbox", { numberOfInputs: 0, outputChannelCount: [2] });
   gain = ctx.createGain();
   analyser = ctx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.6;
-  node.connect(gain).connect(analyser).connect(ctx.destination);
+  master = new AudioWorkletNode(ctx, "master", { numberOfInputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: "explicit" });
+  master.port.onmessage = ({ data }) => { if (data.type === "meter") showMeters(data); };
+  pushMaster();
+  node.connect(gain).connect(master).connect(analyser).connect(ctx.destination);
   node.port.onmessage = ({ data }) => {
     if (data.type === "ready") replayManual();
     if (data.type === "done" && stopping) { ctx.suspend(); stopping = false; setState(false); }
@@ -297,6 +619,69 @@ function initEngine() {
   const s = parseSeed($("seed").value);
   $("seed").value = s.text;
   send({ type: "init", bytes: wasmBytes, kind, hi: s.hi, lo: s.lo });
+  resetMeters();
+}
+
+// ── master section
+let master = null;
+const PRESETS = {
+  flat:   { lowcut: 0,  tilt: 0,   mono: 0,   width: 100, drive: 0, target: 0,   ceiling: -1 },
+  laptop: { lowcut: 80, tilt: 1.5, mono: 160, width: 90,  drive: 0, target: -14, ceiling: -1 },
+  phones: { lowcut: 20, tilt: 0,   mono: 120, width: 80,  drive: 0, target: -16, ceiling: -1 },
+  stream: { lowcut: 30, tilt: 0,   mono: 120, width: 100, drive: 0, target: -14, ceiling: -1 },
+  r128:   { lowcut: 30, tilt: 0,   mono: 120, width: 100, drive: 0, target: -23, ceiling: -1 },
+};
+let mp = { ...PRESETS.flat, bypass: false };
+try { const saved = JSON.parse(localStorage.getItem("musicbox-master") || "null"); if (saved) mp = { ...mp, ...saved, bypass: false }; } catch (_) {}
+
+const fmtDb = (v, d = 1) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+function paintMaster() {
+  $("m-lowcut").value = mp.lowcut; $("m-mono").value = mp.mono; $("m-ceiling").value = mp.ceiling;
+  $("m-tilt").value = mp.tilt; $("o-tilt").textContent = mp.tilt ? `${fmtDb(mp.tilt)} dB highs / ${fmtDb(-mp.tilt)} dB lows` : "flat";
+  $("m-width").value = mp.width; $("o-width").textContent = mp.width === 0 ? "0 % (mono)" : `${mp.width} %`;
+  $("m-drive").value = mp.drive; $("o-drive").textContent = `${fmtDb(mp.drive)} dB`;
+  document.querySelectorAll("[data-target]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.target === mp.target)));
+  $("bypass").setAttribute("aria-pressed", String(mp.bypass));
+  $("b-T").hidden = !mp.target;
+  if (mp.target) $("b-T").style.left = `${(mp.target + 40) / 40 * 100}%`;
+  if (!mp.target) $("agc-read").textContent = "rides gain on short-term loudness, ±12 dB";
+}
+function pushMaster() {
+  if (master) master.port.postMessage({ type: "set", params: mp });
+  try { const { bypass, ...keep } = mp; localStorage.setItem("musicbox-master", JSON.stringify(keep)); } catch (_) {}
+}
+function setMaster(change) { mp = { ...mp, ...change }; paintMaster(); pushMaster(); }
+$("m-lowcut").addEventListener("change", e => setMaster({ lowcut: +e.target.value }));
+$("m-mono").addEventListener("change", e => setMaster({ mono: +e.target.value }));
+$("m-ceiling").addEventListener("change", e => setMaster({ ceiling: +e.target.value }));
+$("m-tilt").addEventListener("input", e => setMaster({ tilt: +e.target.value }));
+$("m-width").addEventListener("input", e => setMaster({ width: +e.target.value }));
+$("m-drive").addEventListener("input", e => setMaster({ drive: +e.target.value }));
+document.querySelectorAll("[data-target]").forEach(b => b.addEventListener("click", () => setMaster({ target: +b.dataset.target })));
+document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => setMaster({ ...PRESETS[b.dataset.preset] })));
+$("bypass").addEventListener("click", () => setMaster({ bypass: !mp.bypass }));
+$("m-reset").addEventListener("click", resetMeters);
+paintMaster();
+
+function resetMeters() {
+  if (master) master.port.postMessage({ type: "reset" });
+  ["r-S", "r-M", "r-I", "r-TP", "r-C"].forEach(id => $(id).textContent = "—");
+  $("r-TP").classList.remove("over");
+}
+const fmtL = v => isFinite(v) && v > -70 ? fmtDb(v) : "—";
+function showMeters(m) {
+  $("r-S").textContent = fmtL(m.S); $("r-M").textContent = fmtL(m.M); $("r-I").textContent = fmtL(m.I);
+  $("r-TP").textContent = m.tpMax > -100 ? fmtDb(m.tpMax) : "—";
+  $("r-TP").classList.toggle("over", m.tpMax > mp.ceiling + 0.05 && !mp.bypass);
+  $("r-GR").textContent = fmtDb(Math.min(0, m.gr));
+  $("r-C").textContent = (m.corr >= 0 ? "+" : "−") + Math.abs(m.corr).toFixed(2);
+  const s = isFinite(m.S) ? Math.max(0, Math.min(1, (m.S + 40) / 40)) : 0;
+  $("b-S").style.transform = `scaleX(${s})`;
+  $("b-GR").style.transform = `scaleX(${Math.max(0, Math.min(1, -m.gr / 12))})`;
+  const c = Math.max(-1, Math.min(1, m.corr)), bc = $("b-C");
+  bc.style.transform = "none"; bc.style.left = `${c >= 0 ? 50 : 50 + 50 * c}%`; bc.style.width = `${50 * Math.abs(c)}%`;
+  bc.classList.toggle("neg", c < 0);
+  if (mp.target) $("agc-read").textContent = `gain ride ${fmtDb(m.agc)} dB toward ${fmtDb(mp.target, 0)} LUFS`;
 }
 function restart() {
   // short dip so the jump between pieces doesn't click; the engine fades itself back in
