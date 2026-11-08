@@ -26,7 +26,7 @@ With the default key and tuning the output is sample-for-sample identical to ups
   fade time, engine limiter)
 - **Master section**: low cut, tilt EQ, mono bass, width, drive, loudness target,
   true-peak look-ahead limiter, and EBU R128 meters
-- A live scope and peak meter
+- A live scope and peak meter, and the scale's notes under it lighting up as they sound
 
 ## Layout
 
@@ -65,6 +65,9 @@ The first commit that adds it is unmodified; the changes after it are:
 - `effects/reverb.rs`: freeze, a 50 ms crossfade to a closed, undamped tank.
 - `instruments/pluck.rs`: string damping as a field (was a fixed 0.7).
 - `effects/delay.rs`: `BbdDelay::reserve_ms` for longer delay times.
+- Live note display: `tuning::NoteActivity`; trigger counters on `MonoSynth`, `DubStab`
+  and `SynthPad`; `Oscillator::envelope`; pluck count in `PluckEngine`. Read-only, no
+  effect on the audio.
 
 Every change leaves the defaults alone: with nothing touched, the output is identical to
 upstream sample for sample.

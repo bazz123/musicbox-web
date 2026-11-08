@@ -119,7 +119,11 @@ button:focus-visible, #seed:focus-visible { outline: 2px solid var(--led); outli
 @media (max-width: 480px) { .tune-row { grid-template-columns: minmax(0, 1fr); } }
 .seg3 { grid-template-columns: repeat(3, 1fr); }
 .seg3 button { padding: 9px 4px; font-size: 13px; }
-.note { display: inline-grid; gap: 3px; text-align: center; }
+.note { display: inline-grid; gap: 3px; text-align: center;
+  background: color-mix(in srgb, var(--led) calc(var(--a, 0) * 80%), transparent);
+  box-shadow: 0 0 calc(var(--a, 0) * 14px) color-mix(in srgb, var(--led) calc(var(--a, 0) * 60%), transparent);
+  transition: background-color .12s linear, box-shadow .12s linear, color .12s linear; }
+.note.lit, .note.lit small { color: var(--ink); }
 .note small { font: 400 9.5px/1 var(--f-mono); color: var(--muted); }
 .note.root { border-color: var(--led); color: var(--ink); }
 
@@ -398,10 +402,12 @@ class MB extends AudioWorkletProcessor {
     const buf = this.e.memory.buffer;
     out[0].set(new Float32Array(buf, this.e.mb_left(), n));
     if (out[1]) out[1].set(new Float32Array(buf, this.e.mb_right(), n));
-    // drone layer meters, ~20 times a second
-    if (++this.blk % 16 === 0) {
+    // sounding notes (both styles) and drone layer meters, ~40 times a second
+    if (++this.blk % 8 === 0) {
+      const msg = { type: "meters", notes: Array.from(new Float32Array(buf, this.e.mb_notes(), 12)) };
       const lp = this.e.mb_levels();
-      if (lp) this.port.postMessage({ type: "levels", v: Array.from(new Float32Array(buf, lp, 4)) });
+      if (lp) msg.levels = Array.from(new Float32Array(buf, lp, 4));
+      this.port.postMessage(msg);
     }
     if (this.e.mb_is_done()) { this.done = true; this.port.postMessage({ type: "done" }); }
     return true;
@@ -648,7 +654,7 @@ function paintTune() {
   document.querySelectorAll("[data-inton]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.inton === tune.inton)));
   const sc = currentScale(), ratios = tune.inton === 2 ? RATIO7 : RATIO5;
   $("notes").innerHTML = sc.iv.map((iv, i) =>
-    `<span class="note${i === 0 ? " root" : ""}">${noteName(tune.root, iv)}${tune.inton ? `<small>${ratios[iv]}</small>` : ""}</span>`).join("");
+    `<span class="note${i === 0 ? " root" : ""}" data-iv="${iv}">${noteName(tune.root, iv)}${tune.inton ? `<small>${ratios[iv]}</small>` : ""}</span>`).join("");
   const into = ["equal", "just 5-limit", "just 7-limit"][tune.inton];
   $("key-label").textContent = `${SHARP[(tune.root + 12) % 12]} ${sc.name} · A4 = ${tune.ref} Hz · ${into}`;
   $("tune-hint").textContent = [
@@ -657,6 +663,14 @@ function paintTune() {
     tune.inton === 2 ? "Just 7 swaps in the harmonic seventh 7/4, the same ratio as the 7/4 pulse, so pitch and rhythm share one ratio." : "",
     "Changing these restarts the piece from the same seed.",
   ].filter(Boolean).join(" ");
+}
+// Light each scale note by how strongly it sounds right now (0..1, from the engine).
+function showNotes(v) {
+  for (const el of $("notes").children) {
+    const a = v ? Math.min(1, v[+el.dataset.iv] || 0) : 0;
+    el.style.setProperty("--a", a.toFixed(3));
+    el.classList.toggle("lit", a > 0.35);
+  }
 }
 function setTune(change) {
   tune = { ...tune, ...change };
@@ -735,7 +749,7 @@ async function ensureCtx() {
   node.connect(gain).connect(master).connect(analyser).connect(ctx.destination);
   node.port.onmessage = ({ data }) => {
     if (data.type === "ready") { replayManual(); replayDrone(); }
-    if (data.type === "levels") showLevels(data.v);
+    if (data.type === "meters") { if (data.levels) showLevels(data.levels); showNotes(data.notes); }
     if (data.type === "done" && stopping) { ctx.suspend(); stopping = false; setState(false); }
     if (data.type === "error") showErr("The audio engine failed to start: " + data.message);
   };
@@ -833,6 +847,7 @@ function setState(on) {
   $("scope").classList.toggle("on", on);
   $("state").lastChild.textContent = on ? "Playing" : "Stopped";
   $("play-tx").textContent = on ? "Stop" : "Play";
+  if (!on) showNotes(null);
   $("play-ic").innerHTML = on ? '<path d="M3 3h10v10H3z"/>' : '<path d="M3 1.5v13l11-6.5z"/>';
 }
 function showErr(m) { $("err").textContent = m; $("err").hidden = false; }

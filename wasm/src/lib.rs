@@ -72,6 +72,12 @@ pub extern "C" fn mb_set_param(len: usize, value: f32) {
     }
 }
 
+/// Sounding notes: 12 values (0..1) by semitone above the key root.
+#[unsafe(no_mangle)]
+pub extern "C" fn mb_notes() -> *const f32 {
+    match &st().engine { Engine::Drone(e) => e.notes().as_ptr(), Engine::Techno(e) => e.notes().as_ptr() }
+}
+
 /// Drone layer peak levels (bass, mid, pluck, high); null for techno.
 #[unsafe(no_mangle)]
 pub extern "C" fn mb_levels() -> *const f32 {

@@ -1,6 +1,8 @@
 /// High synth pad: four detuned sawtooth oscillators with vibrato, slow attack,
 /// LFO-swept LPF, and plate reverb. Detuning spread emulates a string ensemble.
 pub struct SynthPad {
+    /// Number of note triggers so far (musicbox-web, for the live note display).
+    pub triggers: u32,
     phases: [f32; 4],
     base_freqs: [f32; 4],
     vibrato_phase: f32,
@@ -14,6 +16,7 @@ pub struct SynthPad {
 impl SynthPad {
     pub fn new(sample_rate: f32) -> Self {
         Self {
+            triggers: 0,
             phases: [0.0; 4],
             base_freqs: [0.0; 4],
             vibrato_phase: 0.0,
@@ -27,7 +30,11 @@ impl SynthPad {
 
     /// Start a new note. Four voices spread at 0, +12, -12, +24 cents
     /// to emulate a string section. Phase is preserved to avoid clicks.
+    /// Root, third and fifth (or unison voices) of the chord most recently triggered.
+    pub fn notes(&self) -> [f32; 3] { [self.base_freqs[0], self.base_freqs[1], self.base_freqs[2]] }
+
     pub fn trigger(&mut self, freq: f32) {
+        self.triggers = self.triggers.wrapping_add(1);
         self.base_freqs[0] = freq;
         self.base_freqs[1] = freq * 2_f32.powf( 12.0 / 1200.0);
         self.base_freqs[2] = freq * 2_f32.powf(-12.0 / 1200.0);
@@ -44,6 +51,7 @@ impl SynthPad {
 
     /// Start a minor triad. Voices: root, minor third, perfect fifth, root+12 cents (for width).
     pub fn trigger_minor_chord(&mut self, root: f32) {
+        self.triggers = self.triggers.wrapping_add(1);
         let minor_third = root * 2_f32.powf(3.0 / 12.0);  // +3 semitones
         let fifth       = root * 2_f32.powf(7.0 / 12.0);  // +7 semitones
         self.base_freqs[0] = root;

@@ -6,7 +6,7 @@ use crate::instruments::{ClaveVoice, DubStab, HiHat, Kick, MonoSynth, Snare808, 
 use crate::clocks::{Clock, PulseOscillator, TimeSignature};
 use crate::util::prng::Xorshift64;
 use crate::track::{State, Track};
-use crate::tuning::{Tuning, AEOLIAN};
+use crate::tuning::{NoteActivity, Tuning, AEOLIAN};
 
 /// Counts down an `Option<u32>` timer and runs `$body` when it hits zero.
 macro_rules! tick_timer {
@@ -250,6 +250,8 @@ pub struct AmbientTechno {
     mono_reverb: DattorroReverb,
     mono_step: usize,
     tuning: Tuning,
+    notes: NoteActivity,
+    seen_triggers: [u32; 6],
     mono_seq_freqs: [f32; 16],  // realized sequence (rerolled every 8 playthroughs)
     mono_seq_repeats: u8,       // how many full playthroughs of the current sequence
     mono_downbeat_timer: Option<u32>,
@@ -343,6 +345,8 @@ impl AmbientTechno {
             mono_reverb: DattorroReverb::new(0.82, 0.3, 0.7, 0.05, sr, &mut rng),
             mono_step: 0,
             tuning: tuning.clone(),
+            notes: NoteActivity::new(&tuning),
+            seen_triggers: [0; 6],
             mono_seq_freqs: {
                 let mut f = [0.0f32; 16];
                 for i in 0..16 { f[i] = tuning.map(A_MINOR_SCALE[MONO_SEQ_IDX[i]], &AEOLIAN); }
@@ -400,6 +404,26 @@ impl AmbientTechno {
             let third = t.map(src_root * 2f32.powf(3.0 / 12.0), &AEOLIAN);
             let fifth = t.map(src_root * 2f32.powf(7.0 / 12.0), &AEOLIAN);
             self.pad.trigger_triad(root, third, fifth);
+        }
+    }
+
+    /// Sounding notes by semitone above the key root, 0..1 (musicbox-web).
+    pub fn notes(&self) -> &[f32; 12] {
+        &self.notes.bins
+    }
+
+    /// Light the notes of every instrument that triggered during the last block.
+    fn update_notes(&mut self, frames: usize, sr: f32) {
+        self.notes.decay((-(frames as f32) / (0.5 * sr)).exp());
+        let counts = [self.mono.triggers, self.bass.triggers, self.stab.triggers,
+                      self.stab2.triggers, self.stab3.triggers, self.pad.triggers];
+        let chords = [[self.mono.target(), 0.0, 0.0], [self.bass.target(), 0.0, 0.0], self.stab.notes(),
+                      self.stab2.notes(), self.stab3.notes(), self.pad.notes()];
+        for i in 0..6 {
+            if counts[i] != self.seen_triggers[i] {
+                self.seen_triggers[i] = counts[i];
+                for f in chords[i] { self.notes.hit(f, 1.0); }
+            }
         }
     }
 
@@ -1028,6 +1052,8 @@ impl Track for AmbientTechno {
             left[i] = l;
             right[i] = r;
         }
+        let sr = self.sample_rate;
+        self.update_notes(len, sr);
     }
 
     fn start_fade_out(&mut self) {

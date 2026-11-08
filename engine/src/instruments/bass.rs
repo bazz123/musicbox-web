@@ -2,6 +2,8 @@
 /// through a cascaded 4-pole resonant low-pass (two SVF stages) with a decaying
 /// filter envelope and portamento glide.
 pub struct MonoSynth {
+    /// Number of note triggers so far (musicbox-web, for the live note display).
+    pub triggers: u32,
     phase: f32,          // main oscillator
     sub_phase: f32,      // sub-oscillator, one octave down
     freq: f32,           // current frequency (glides toward target)
@@ -31,6 +33,7 @@ pub struct MonoSynth {
 impl MonoSynth {
     pub fn new(sample_rate: f32) -> Self {
         Self {
+            triggers: 0,
             phase: 0.0,
             sub_phase: 0.0,
             freq: 110.0,
@@ -71,7 +74,11 @@ impl MonoSynth {
         }
     }
 
+    /// The note most recently triggered.
+    pub fn target(&self) -> f32 { self.target_freq }
+
     pub fn trigger(&mut self, freq: f32, accented: bool) {
+        self.triggers = self.triggers.wrapping_add(1);
         self.target_freq = freq;
         // Don't reset amp to 0 — retrigger from current level to avoid a click.
         self.amp_peak = if accented { 1.0 } else { 0.6 };

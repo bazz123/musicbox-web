@@ -40,6 +40,13 @@ impl Oscillator {
         }
     }
 
+    /// Current swell level, 0..1, without advancing anything (musicbox-web).
+    pub fn envelope(&self) -> f32 {
+        let envelope_01 = ((self.envelope_phase * std::f32::consts::TAU).sin() + 1.0) * 0.5;
+        let e = ((envelope_01 - self.sparsity) / (1.0 - self.sparsity)).clamp(0.0, 1.0);
+        e * e
+    }
+
     /// Generate the next sample and advance all phases.
     pub fn next_sample(&mut self) -> f32 {
         let envelope_raw = (self.envelope_phase * std::f32::consts::TAU).sin();

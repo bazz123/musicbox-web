@@ -59,6 +59,9 @@ pub struct PluckEngine {
     pub max_interval: u32,
     pub amplitude: f32,
     pub rng_state: u64,
+    /// Pluck count and the last plucked frequency (musicbox-web, live note display).
+    pub plucked: u32,
+    pub last_freq: f32,
 }
 
 impl PluckEngine {
@@ -86,6 +89,8 @@ impl PluckEngine {
             max_interval,
             amplitude,
             rng_state,
+            plucked: 0,
+            last_freq: 0.0,
         }
     }
 
@@ -102,6 +107,8 @@ impl PluckEngine {
         if self.next_pluck_in == 0 {
             let freq_idx = (Self::xorshift(&mut self.rng_state) as usize) % self.freqs.len();
             let freq = self.freqs[freq_idx];
+            self.plucked = self.plucked.wrapping_add(1);
+            self.last_freq = freq;
             let period = (self.bbd_left.sample_rate / freq) as usize;
 
             let voice_idx = self

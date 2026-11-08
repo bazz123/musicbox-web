@@ -5,7 +5,7 @@ use crate::effects::{DattorroReverb, ResonantLpf};
 use crate::instruments::oscillator::Oscillator;
 use crate::instruments::pluck::PluckEngine;
 use crate::track::{State, Track};
-use crate::tuning::{Tuning, MINOR_PENTATONIC};
+use crate::tuning::{NoteActivity, Tuning, MINOR_PENTATONIC};
 
 const FADE_DURATION: f32 = 3.0;
 
@@ -103,6 +103,8 @@ pub struct Drone {
     warmth_drive: f32,
     warmth_norm: f32,
     limiter_on: bool,
+    notes: NoteActivity,
+    seen_plucks: u32,
     sr: f32,
     limiter_gain: f32,
     fade_pos: u32,
@@ -167,6 +169,8 @@ impl Drone {
             warmth_drive: 1.0,
             warmth_norm: 1.0,
             limiter_on: true,
+            notes: NoteActivity::new(&tuning),
+            seen_plucks: 0,
             sr,
             limiter_gain: 1.0,
             fade_pos: 0,
@@ -254,6 +258,26 @@ impl Drone {
         &self.levels
     }
 
+    /// Sounding notes by semitone above the key root, 0..1.
+    pub fn notes(&self) -> &[f32; 12] {
+        &self.notes.bins
+    }
+
+    /// Update the note display once per rendered block.
+    fn update_notes(&mut self, frames: usize) {
+        self.notes.decay((-(frames as f32) / (0.4 * self.sr)).exp());
+        for (layer, g) in [(&self.bass, self.gain[0]), (&self.mid, self.gain[1]), (&self.high, self.gain[3])] {
+            let g = g.min(1.0);
+            for o in &layer.oscillators {
+                if o.amplitude > 0.0 { self.notes.hit(o.freq, o.envelope() * g); }
+            }
+        }
+        if self.plucks.plucked != self.seen_plucks {
+            self.seen_plucks = self.plucks.plucked;
+            self.notes.hit(self.plucks.last_freq, self.gain[2].min(1.0));
+        }
+    }
+
     /// Live controls (musicbox-web). Unknown names are ignored.
     pub fn set_param(&mut self, name: &str, v: f32) {
         match name {
@@ -336,6 +360,7 @@ impl Track for Drone {
             left[i] = l;
             right[i] = r;
         }
+        self.update_notes(len);
     }
 
     fn start_fade_out(&mut self) {

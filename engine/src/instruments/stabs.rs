@@ -4,6 +4,8 @@ use crate::util::prng::Xorshift64;
 /// with fast attack, band-pass filtered (decaying LPF + fixed HPF),
 /// and fed through dub delay.
 pub struct DubStab {
+    /// Number of note triggers so far (musicbox-web, for the live note display).
+    pub triggers: u32,
     phases: [f32; 3],
     freqs: [f32; 3],
     /// 0.0 = saw, 1.0 = triangle (blends between them)
@@ -26,6 +28,7 @@ pub struct DubStab {
 impl DubStab {
     pub fn new(sample_rate: f32) -> Self {
         Self {
+            triggers: 0,
             phases: [0.0; 3],
             freqs: [0.0; 3],
             wave_blend: 0.4, // mostly saw with some triangle character
@@ -57,7 +60,11 @@ impl DubStab {
         self.trigger_with_chord_and_cutoff(notes, 2500.0, rng);
     }
 
+    /// The chord most recently triggered.
+    pub fn notes(&self) -> [f32; 3] { self.freqs }
+
     pub fn trigger_with_chord_and_cutoff(&mut self, notes: [f32; 3], initial_cutoff: f32, rng: &mut Xorshift64) {
+        self.triggers = self.triggers.wrapping_add(1);
         self.freqs[0] = notes[0] * (1.0 + rng.white() * 0.008);
         self.freqs[1] = notes[1] * (1.0 + rng.white() * 0.012);
         self.freqs[2] = notes[2] * (1.0 + rng.white() * 0.010);

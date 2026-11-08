@@ -107,6 +107,30 @@ impl Tuning {
     }
 }
 
+/// Which notes are sounding, as 12 bins of semitones above the key root (0..1).
+/// Feeds the live note display; never touches audio.
+pub struct NoteActivity {
+    pub bins: [f32; 12],
+    root_hz: f32,
+}
+
+impl NoteActivity {
+    pub fn new(tuning: &Tuning) -> Self {
+        Self { bins: [0.0; 12], root_hz: tuning.pitch(0) }
+    }
+    pub fn decay(&mut self, k: f32) {
+        for b in &mut self.bins { *b *= k; }
+    }
+    /// Raise the bin nearest `freq` to at least `amount`. Just ratios sit within
+    /// 32 cents of a semitone, so rounding finds the right degree.
+    pub fn hit(&mut self, freq: f32, amount: f32) {
+        if freq <= 0.0 || amount <= 0.0 { return; }
+        let n = (12.0 * (freq / self.root_hz).log2()).round() as i32;
+        let b = &mut self.bins[n.rem_euclid(12) as usize];
+        *b = b.max(amount.min(1.0));
+    }
+}
+
 /// Move pitch class `pc` from `src` to `tgt`. Same-size scales map degree to degree,
 /// so a mode change alters exactly the notes that differ. Otherwise the nearest
 /// target note wins, ties going up (12 stands for the root an octave up).
@@ -163,5 +187,21 @@ mod tests {
         assert!((t.map(196.0, &AEOLIAN) / 110.0 - 1.8).abs() < 1e-5); // G3 = 9/5
         let t = Tuning { intonation: Intonation::Just7, ..Default::default() };
         assert!((t.map(196.0, &AEOLIAN) / 110.0 - 1.75).abs() < 1e-5); // G3 = 7/4
+    }
+}
+
+#[cfg(test)]
+mod note_tests {
+    use super::*;
+
+    #[test]
+    fn hits_land_on_the_right_degree() {
+        let t = Tuning { root: -2, scale: Some(&DORIAN), intonation: Intonation::Just7, ..Default::default() }; // G
+        let mut a = NoteActivity::new(&t);
+        a.hit(t.pitch(-24 + 10), 0.8); // F, 7/4 above G, two octaves down
+        a.hit(t.pitch(7), 0.5);        // D
+        assert_eq!(a.bins[10], 0.8);
+        assert_eq!(a.bins[7], 0.5);
+        assert_eq!(a.bins.iter().filter(|&&b| b > 0.0).count(), 2);
     }
 }
