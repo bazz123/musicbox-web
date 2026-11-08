@@ -1,0 +1,374 @@
+<meta charset="utf-8">
+<title>musicbox</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an instrument panel. Scope on the left, controls and patch notes on the right; stacks on phones. */
+:root {
+  --bg: #E6EAEE;
+  --panel: #F4F6F8;
+  --ink: #1B2230;
+  --muted: #5D6878;
+  --rule: #C9D0D9;
+  --led: #C96A12;
+  --led-soft: rgba(201,106,18,.14);
+  --trace: #2D4A72;
+  --f-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body: "Figtree", system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11151D; --panel: #181E29; --ink: #E4E8EF; --muted: #8C97A8; --rule: #2A3242;
+  --led: #F2A04A; --led-soft: rgba(242,160,74,.14); --trace: #9DB7DD; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11151D; --panel: #181E29; --ink: #E4E8EF; --muted: #8C97A8; --rule: #2A3242;
+  --led: #F2A04A; --led-soft: rgba(242,160,74,.14); --trace: #9DB7DD; color-scheme: dark }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 40px; }
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { font: 700 clamp(34px, 6vw, 52px)/1 var(--f-display); letter-spacing: -.035em; margin: 0; }
+h1 span { color: var(--led); }
+.sub { color: var(--muted); margin: 6px 0 0; max-width: 52ch; text-wrap: balance; }
+.label { font: 500 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 820px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+.scope { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; display: grid; gap: 12px; }
+.scope-head, .scope-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.readout { font: 400 12px/1 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.lamp { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--rule); margin-right: 8px; vertical-align: 0; transition: background .3s, box-shadow .3s; }
+.on .lamp { background: var(--led); box-shadow: 0 0 10px var(--led); }
+canvas { width: 100%; max-width: 100%; aspect-ratio: 1; display: block; }
+.notes { display: flex; gap: 6px; flex-wrap: wrap; }
+.note { font: 500 12px/1 var(--f-mono); padding: 5px 7px; border: 1px solid var(--rule); border-radius: 3px; color: var(--muted); }
+
+.controls { display: grid; gap: 22px; }
+.group { display: grid; gap: 10px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 6px; padding: 3px; background: var(--panel); }
+.seg button { font: 600 14px/1 var(--f-body); color: var(--muted); background: none; border: 0; border-radius: 4px; padding: 11px 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.transport { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; }
+#play { flex: 1 1 160px; font: 700 18px/1 var(--f-display); letter-spacing: -.01em; background: var(--led); color: #fff; border: 0; border-radius: 6px; padding: 16px 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+#play svg { width: 16px; height: 16px; fill: currentColor; }
+.seedbox { flex: 1 1 200px; display: flex; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); min-width: 0; }
+.seedbox label { display: grid; gap: 4px; padding: 8px 10px; flex: 1; min-width: 0; }
+#seed { font: 500 15px/1.2 var(--f-mono); color: var(--ink); background: none; border: 0; padding: 0; width: 100%; min-width: 0; outline: none; }
+#shuffle { border: 0; border-left: 1px solid var(--rule); background: none; color: var(--ink); padding: 0 14px; cursor: pointer; font: 500 13px/1 var(--f-body); border-radius: 0 6px 6px 0; }
+button:focus-visible, #seed:focus-visible { outline: 2px solid var(--led); outline-offset: 2px; }
+#shuffle:hover, .seg button:hover { color: var(--ink); }
+.hint { color: var(--muted); font-size: 13px; margin: 0; }
+
+.layers { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.layers li { display: grid; grid-template-columns: 92px minmax(0,1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.layers b { font: 500 11px/1.9 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--led); font-weight: 500; }
+.layers span { font-size: 14px; }
+
+.voices { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.voice { border: 1px solid var(--rule); background: var(--panel); border-radius: 5px; padding: 9px 10px; text-align: left; cursor: pointer; color: var(--ink); display: grid; gap: 6px; font: inherit; }
+.voice .vn { font: 600 13px/1 var(--f-body); }
+.voice .vr { font: 400 11px/1 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.voice[aria-pressed="true"] { border-color: var(--led); background: var(--led-soft); }
+.voice[aria-pressed="true"] .vr { color: var(--led); }
+.mixhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+#auto { font: 500 12px/1 var(--f-body); border: 1px solid var(--rule); background: none; color: var(--ink); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+#auto[disabled] { opacity: .45; cursor: default; }
+
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 6px 20px; }
+footer a { color: var(--ink); }
+#err { color: var(--led); font-size: 13px; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .lamp { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>music<span>box</span></h1>
+      <p class="sub">Generative music from Ben Askins’ Rust engine, compiled to WebAssembly and running in your browser. Every seed plays a different piece.</p>
+    </div>
+    <span class="label">A minor pentatonic · 32-bit float</span>
+  </header>
+
+  <div class="main">
+    <section class="scope" id="scope" aria-label="Output scope">
+      <div class="scope-head">
+        <span class="label" id="state"><i class="lamp"></i>Stopped</span>
+        <span class="readout" id="clock">00:00 · — kHz</span>
+      </div>
+      <canvas id="cv" width="800" height="800" aria-hidden="true"></canvas>
+      <div class="scope-foot">
+        <div class="notes" aria-label="Scale">
+          <span class="note">A</span><span class="note">C</span><span class="note">D</span><span class="note">E</span><span class="note">G</span>
+        </div>
+        <span class="readout" id="peak">peak −∞ dB</span>
+      </div>
+    </section>
+
+    <section class="controls">
+      <div class="group">
+        <span class="label" id="style-label">Style</span>
+        <div class="seg" role="group" aria-labelledby="style-label">
+          <button id="m-drone" aria-pressed="true" data-kind="0">Drone</button>
+          <button id="m-techno" aria-pressed="false" data-kind="1">Ambient techno</button>
+        </div>
+      </div>
+
+      <div class="transport">
+        <button id="play"><svg viewBox="0 0 16 16" id="play-ic"><path d="M3 1.5v13l11-6.5z"/></svg><span id="play-tx">Play</span></button>
+        <div class="seedbox">
+          <label for="seed"><span class="label">Seed</span><input id="seed" spellcheck="false" autocomplete="off" inputmode="text" maxlength="16"></label>
+          <button id="shuffle" title="Pick a new random seed">New seed</button>
+        </div>
+      </div>
+      <p class="hint">The same seed always plays the same piece. Change it while playing to jump to a new one.</p>
+      <p id="err" hidden></p>
+
+      <div class="group" id="drone-info">
+        <span class="label">What you’ll hear</span>
+        <ul class="layers">
+          <li><b>Bass</b><span>Sine drones fading in and out below 130 Hz</span></li>
+          <li><b>Mids</b><span>Oscillator layers through a sweeping resonant low-pass filter</span></li>
+          <li><b>Plucks</b><span>Karplus-Strong strings through a bucket-brigade (BBD) delay</span></li>
+          <li><b>Highs</b><span>Oscillators into a Dattorro plate reverb, ported from Mutable Instruments Clouds</span></li>
+          <li><b>Master</b><span>Peak limiter and a 3-second fade in and out</span></li>
+        </ul>
+      </div>
+
+      <div class="group" id="techno-info" hidden>
+        <div class="mixhead">
+          <span class="label" id="mix-label">Voices · auto arrangement</span>
+          <button id="auto" disabled>Back to auto</button>
+        </div>
+        <div class="voices" id="voices"></div>
+        <p class="hint">Tap a voice to take over the mix; only lit voices play. Tap a lit voice’s rate to change its pulse. Turning one off again silences it.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <span>Engine: <a href="https://github.com/benaskins/musicbox" target="_blank" rel="noopener">benaskins/musicbox</a> by Ben Askins, CC BY-SA 4.0</span>
+    <span>Plate reverb after Émilie Gillet’s Mutable Instruments code, MIT</span>
+  </footer>
+</div>
+
+<script id="worklet-src" type="text/plain">
+class MB extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.e = null; this.done = false;
+    this.port.onmessage = ({ data }) => {
+      try {
+        if (data.type === "init") {
+          if (!this.mod) this.mod = new WebAssembly.Module(data.bytes);
+          this.e = new WebAssembly.Instance(this.mod, {}).exports;
+          this.e.mb_init(data.kind, sampleRate, data.hi >>> 0, data.lo >>> 0);
+          this.done = false;
+          this.port.postMessage({ type: "ready" });
+        } else if (data.type === "fade" && this.e) {
+          this.e.mb_fade_out();
+        } else if (data.type === "param" && this.e) {
+          const b = data.nameBytes; // TextEncoder is not available in the worklet scope
+          new Uint8Array(this.e.memory.buffer, this.e.mb_name_buf(), 64).set(b);
+          this.e.mb_set_param(b.length, data.value);
+        }
+      } catch (err) { this.port.postMessage({ type: "error", message: String(err && err.message || err) }); }
+    };
+  }
+  process(_, outputs) {
+    const out = outputs[0];
+    if (!this.e || this.done || !out || !out.length) return true;
+    const n = out[0].length;
+    this.e.mb_render(n);
+    const buf = this.e.memory.buffer;
+    out[0].set(new Float32Array(buf, this.e.mb_left(), n));
+    if (out[1]) out[1].set(new Float32Array(buf, this.e.mb_right(), n));
+    if (this.e.mb_is_done()) { this.done = true; this.port.postMessage({ type: "done" }); }
+    return true;
+  }
+}
+registerProcessor("musicbox", MB);
+</script>
+
+<script>
+const WASM_B64 = "__WASM__";
+const wasmBytes = Uint8Array.from(atob(WASM_B64), c => c.charCodeAt(0));
+
+const $ = id => document.getElementById(id);
+const VOICES = [
+  ["kick", "Kick"], ["snare", "Snare"], ["hats", "Hats"], ["rim", "Rim"],
+  ["stab1", "Stab 1"], ["stab2", "Stab 2"], ["stab3", "Stab 3"], ["pad", "Pad"],
+  ["mono", "Mono"], ["clave", "Clave"], ["bass", "Bass"]
+];
+// Pulse ratios from the engine: base 1.2 Hz times n/d
+const RATIOS = [[1,1],[7,4],[3,5],[9,5],[1,7]];
+const ratioText = i => `${RATIOS[i][0]}/${RATIOS[i][1]} · ${(1.2*RATIOS[i][0]/RATIOS[i][1]).toFixed(2)} Hz`;
+
+let ctx = null, node = null, gain = null, analyser = null;
+let kind = 0, playing = false, startedAt = 0, stopping = false;
+let manual = false;
+const vstate = Object.fromEntries(VOICES.map(([id]) => [id, { on: false, ratio: 0 }]));
+
+function randSeed() {
+  const a = new Uint32Array(2); crypto.getRandomValues(a);
+  return a[0].toString(16).padStart(8, "0") + a[1].toString(16).padStart(8, "0");
+}
+function parseSeed(s) {
+  s = (s || "").trim().toLowerCase().replace(/[^0-9a-f]/g, "").slice(-16).padStart(16, "0");
+  return { hi: parseInt(s.slice(0, 8), 16), lo: parseInt(s.slice(8), 16), text: s };
+}
+$("seed").value = randSeed();
+
+// ── voices UI
+const vbox = $("voices");
+VOICES.forEach(([id, name]) => {
+  const b = document.createElement("button");
+  b.className = "voice"; b.id = "v-" + id; b.setAttribute("aria-pressed", "false");
+  b.innerHTML = `<span class="vn">${name}</span><span class="vr">auto</span>`;
+  b.addEventListener("click", ev => {
+    const s = vstate[id];
+    if (s.on && ev.target.classList.contains("vr")) {
+      s.ratio = (s.ratio + 1) % RATIOS.length;
+      send({ type: "param", name: id + "_ratio", value: s.ratio });
+    } else {
+      s.on = !s.on;
+      if (!manual) { manual = true; $("auto").disabled = false; $("mix-label").textContent = "Voices · manual mix"; }
+      send({ type: "param", name: id + "_mute", value: s.on ? 0 : 1 });
+      if (s.on) send({ type: "param", name: id + "_ratio", value: s.ratio });
+    }
+    paintVoices();
+  });
+  vbox.appendChild(b);
+});
+function paintVoices() {
+  VOICES.forEach(([id]) => {
+    const b = $("v-" + id), s = vstate[id];
+    b.setAttribute("aria-pressed", String(s.on));
+    b.querySelector(".vr").textContent = !manual ? "auto" : s.on ? ratioText(s.ratio) : "off";
+  });
+}
+function replayManual() {
+  if (!manual) return;
+  VOICES.forEach(([id]) => {
+    const s = vstate[id];
+    send({ type: "param", name: id + "_mute", value: s.on ? 0 : 1 });
+    if (s.on) send({ type: "param", name: id + "_ratio", value: s.ratio });
+  });
+}
+$("auto").addEventListener("click", () => {
+  manual = false; $("auto").disabled = true; $("mix-label").textContent = "Voices · auto arrangement";
+  VOICES.forEach(([id]) => vstate[id].on = false);
+  paintVoices();
+  if (playing) restart();
+});
+
+const enc = new TextEncoder();
+function send(msg) {
+  if (!node) return;
+  if (msg.type === "param") msg.nameBytes = enc.encode(msg.name);
+  node.port.postMessage(msg);
+}
+
+// ── audio
+async function ensureCtx() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "playback" });
+  const url = URL.createObjectURL(new Blob([$("worklet-src").textContent], { type: "text/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  node = new AudioWorkletNode(ctx, "musicbox", { numberOfInputs: 0, outputChannelCount: [2] });
+  gain = ctx.createGain();
+  analyser = ctx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.6;
+  node.connect(gain).connect(analyser).connect(ctx.destination);
+  node.port.onmessage = ({ data }) => {
+    if (data.type === "ready") replayManual();
+    if (data.type === "done" && stopping) { ctx.suspend(); stopping = false; setState(false); }
+    if (data.type === "error") showErr("The audio engine failed to start: " + data.message);
+  };
+}
+function initEngine() {
+  const s = parseSeed($("seed").value);
+  $("seed").value = s.text;
+  send({ type: "init", bytes: wasmBytes, kind, hi: s.hi, lo: s.lo });
+}
+function restart() {
+  // short dip so the jump between pieces doesn't click; the engine fades itself back in
+  const t = ctx.currentTime;
+  gain.gain.cancelScheduledValues(t); gain.gain.setValueAtTime(gain.gain.value, t);
+  gain.gain.linearRampToValueAtTime(0, t + 0.25);
+  setTimeout(() => { initEngine(); gain.gain.setValueAtTime(1, ctx.currentTime); startedAt = performance.now(); }, 280);
+}
+async function play() {
+  try {
+    await ensureCtx();
+    gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(1, ctx.currentTime);
+    initEngine();
+    await ctx.resume();
+    startedAt = performance.now(); stopping = false; setState(true);
+  } catch (e) { showErr("Audio could not start in this browser: " + (e.message || e)); }
+}
+function stop() {
+  stopping = true; send({ type: "fade" });
+  $("play-tx").textContent = "Fading out…";
+}
+function setState(on) {
+  playing = on;
+  $("scope").classList.toggle("on", on);
+  $("state").lastChild.textContent = on ? "Playing" : "Stopped";
+  $("play-tx").textContent = on ? "Stop" : "Play";
+  $("play-ic").innerHTML = on ? '<path d="M3 3h10v10H3z"/>' : '<path d="M3 1.5v13l11-6.5z"/>';
+}
+function showErr(m) { $("err").textContent = m; $("err").hidden = false; }
+
+$("play").addEventListener("click", () => { if (stopping) return; playing ? stop() : play(); });
+$("shuffle").addEventListener("click", () => { $("seed").value = randSeed(); if (playing && !stopping) restart(); });
+$("seed").addEventListener("change", () => { if (playing && !stopping) restart(); });
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  const k = +b.dataset.kind; if (k === kind) return;
+  kind = k;
+  document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  $("drone-info").hidden = k !== 0; $("techno-info").hidden = k !== 1;
+  manual = false; $("auto").disabled = true; $("mix-label").textContent = "Voices · auto arrangement";
+  VOICES.forEach(([id]) => vstate[id].on = false); paintVoices();
+  if (playing && !stopping) restart();
+}));
+
+// ── scope: the stereo signal wrapped around a ring
+const cv = $("cv"), g = cv.getContext("2d");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let L = null, rot = 0;
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function draw() {
+  const W = cv.width, C = W / 2, R = W * 0.3;
+  const bg = css("--panel"), trace = css("--trace"), led = css("--led"), rule = css("--rule");
+  g.globalAlpha = playing ? 0.22 : 1; g.fillStyle = bg; g.fillRect(0, 0, W, W); g.globalAlpha = 1;
+  g.strokeStyle = rule; g.lineWidth = 1.5;
+  for (const r of [R * 0.55, R, R * 1.45]) { g.beginPath(); g.arc(C, C, r, 0, Math.PI * 2); g.stroke(); }
+  if (analyser && playing) {
+    if (!L) L = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(L);
+    let pk = 0; for (const v of L) pk = Math.max(pk, Math.abs(v));
+    $("peak").textContent = "peak " + (pk > 1e-5 ? (20 * Math.log10(pk)).toFixed(1) : "−∞") + " dB";
+    if (!reduce) rot += 0.0016;
+    g.beginPath();
+    const n = L.length;
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2 + rot, r = R * (1 + 0.9 * L[i % n]);
+      const x = C + Math.cos(a) * r, y = C + Math.sin(a) * r;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.strokeStyle = trace; g.lineWidth = 2.2; g.stroke();
+    g.fillStyle = led; g.beginPath(); g.arc(C + Math.cos(rot) * R * 1.45, C + Math.sin(rot) * R * 1.45, 6, 0, 7); g.fill();
+    const s = Math.floor((performance.now() - startedAt) / 1000);
+    $("clock").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")} · ${(ctx.sampleRate / 1000).toFixed(1)} kHz`;
+  } else {
+    g.strokeStyle = trace; g.globalAlpha = 0.5; g.lineWidth = 2; g.beginPath(); g.arc(C, C, R, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1;
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+</script>

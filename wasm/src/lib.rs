@@ -1,0 +1,59 @@
+use musicbox_core::{MusicBox, Track};
+use musicbox_core::tracks::ambient_techno::AmbientTechno;
+
+fn no_entropy(_: &mut [u8]) -> Result<(), getrandom::Error> { Err(getrandom::Error::UNSUPPORTED) }
+getrandom::register_custom_getrandom!(no_entropy);
+
+enum Engine { Drone(MusicBox), Techno(AmbientTechno) }
+
+struct State { engine: Engine, l: Vec<f32>, r: Vec<f32> }
+
+static mut STATE: Option<State> = None;
+static mut NAME: [u8; 64] = [0; 64];
+
+#[allow(static_mut_refs)]
+fn st() -> &'static mut State { unsafe { STATE.as_mut().unwrap() } }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn mb_init(kind: u32, sample_rate: u32, seed_hi: u32, seed_lo: u32) {
+    let seed = ((seed_hi as u64) << 32) | seed_lo as u64;
+    let engine = if kind == 1 { Engine::Techno(AmbientTechno::new(sample_rate, seed)) }
+                 else { Engine::Drone(MusicBox::new(sample_rate, seed)) };
+    unsafe { STATE = Some(State { engine, l: vec![0.0; 4096], r: vec![0.0; 4096] }); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn mb_render(frames: usize) {
+    let s = st();
+    let f = frames.min(4096);
+    match &mut s.engine {
+        Engine::Drone(e) => e.render(&mut s.l[..f], &mut s.r[..f]),
+        Engine::Techno(e) => e.render(&mut s.l[..f], &mut s.r[..f]),
+    }
+}
+
+#[unsafe(no_mangle)] pub extern "C" fn mb_left() -> *const f32 { st().l.as_ptr() }
+#[unsafe(no_mangle)] pub extern "C" fn mb_right() -> *const f32 { st().r.as_ptr() }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn mb_fade_out() {
+    match &mut st().engine { Engine::Drone(e) => e.start_fade_out(), Engine::Techno(e) => e.start_fade_out() }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn mb_is_done() -> u32 {
+    (match &st().engine { Engine::Drone(e) => e.is_done(), Engine::Techno(e) => e.is_done() }) as u32
+}
+
+#[unsafe(no_mangle)]
+#[allow(static_mut_refs)]
+pub extern "C" fn mb_name_buf() -> *mut u8 { unsafe { NAME.as_mut_ptr() } }
+
+#[unsafe(no_mangle)]
+#[allow(static_mut_refs)]
+pub extern "C" fn mb_set_param(len: usize, value: f32) {
+    let bytes = unsafe { &NAME[..len.min(64)] };
+    if let (Ok(name), Engine::Techno(e)) = (std::str::from_utf8(bytes), &mut st().engine) {
+        e.set_param(name, value);
+    }
+}

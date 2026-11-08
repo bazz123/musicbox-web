@@ -1,0 +1,20 @@
+[package]
+name = "musicbox-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "CC-BY-SA-4.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The synthesis engine, unchanged, from Ben Askins' musicbox (pinned commit)
+musicbox-core = { git = "https://github.com/benaskins/musicbox", rev = "8aa47f2c9083d246f4cf3232c799599f2263b75f" }
+getrandom = { version = "0.2", features = ["custom"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
